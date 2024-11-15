@@ -61,7 +61,7 @@ def process_video(input_path, output_path):
 
 def main():
     print("Functie")
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4","output.mp4")
+    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output.mp4")
 
 if __name__ == '__main__':
     main()
