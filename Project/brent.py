@@ -1,15 +1,11 @@
 import math
 import random
-import re
-from collections import namedtuple
-from typing import Any
 import cv2
 import numpy as np
 import scipy.ndimage
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
-from functools import reduce
-from operator import concat
+from moviepy.editor import *
 
 def gaussian_filter(shape, sigma):
     """Genereer een Gaussiaans filtermasker met de opgegeven afbeeldingsgrootte en sigma."""
@@ -96,9 +92,20 @@ def process_video(input_path, output_path,s=2,k=0.1):
     cv2.destroyAllWindows()
 
 def main():
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output.mp4",1,0.001)
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output1.mp4",1,0.05)
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output2.mp4",1,0.5)
+    video_clip = VideoFileClip("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4")
+    W,H = video_clip.size
+    print(W,H)
+    audio_clip = video_clip.audio
+    audio_clip.write_audiofile("output/original_audio.mp3")
+    audio_clip = AudioFileClip("output/edit_audio.mp3")
+    video_clip = video_clip.set_audio(audio_clip)
+    video_clip.write_videofile("output/original_video.mp4")
+    audio_clip.close()
+    video_clip.close()
+
+    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output.mp4",1,0.4)
+    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output1.mp4",1.5,0.5)
+    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output2.mp4",2,0.6)
 
 if __name__ == '__main__':
     main()
