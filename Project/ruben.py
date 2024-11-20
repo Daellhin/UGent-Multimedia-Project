@@ -5,7 +5,7 @@ from collections import namedtuple
 from typing import Any
 import cv2
 import numpy as np
-import scipy.ndimage
+import scipy
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
 from functools import reduce
@@ -24,40 +24,35 @@ def process_video(input_path, output_path):
     # Create VideoWriter object
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
-
-    while cap.isOpened():
+    if cap.isOpened():
+        _, frame_3 = cap.read()
+        _, frame_2 = cap.read()
+        _, frame_1 = cap.read()
         ret, frame = cap.read()
-        if not ret:
-            break
+        while cap.isOpened():
+            if not ret:
+                break
+            stacked_frames = np.stack([frame_3,frame_2,frame_1,frame], axis=-1)
+            output_frame = np.median(stacked_frames, axis=-1).astype(np.uint8)
+            frame_3 = frame_2
+            frame_2 = frame_1
+            frame_1 = frame
+            # Write the processed frame
+            out.write(output_frame)
 
-        # Example processing operations:
+            # Optional: Display the result (comment out for faster processing)
+            cv2.imshow('Processing Video', output_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            ret, frame = cap.read()
 
-        # 1. Convert to grayscale and back to BGR
-        # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # frame = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-
-        # 2. Apply Gaussian blur
-        # frame = cv2.GaussianBlur(frame, (5, 5), 0)
-
-        # 3. Adjust brightness
-        # frame = cv2.convertScaleAbs(frame, alpha=1.2, beta=10)
-
-        # 4. Edge detection
-        # edges = cv2.Canny(frame, 100, 200)
-        # frame = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-
-        # Write the processed frame
-        out.write(frame)
-
-        # Optional: Display the result (comment out for faster processing)
-        cv2.imshow('Processing Video', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
     # Release everything
     cap.release()
     out.release()
     cv2.destroyAllWindows()
+
+
 
 def main():
     print("Functie")
