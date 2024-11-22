@@ -5,47 +5,59 @@ import numpy as np
 import scipy.ndimage
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
-from moviepy.editor import *
+import moviepy
 
-def gaussian_filter(shape, sigma):
-    """Genereer een Gaussiaans filtermasker met de opgegeven afbeeldingsgrootte en sigma."""
-    rows, cols = shape
-    center_row, center_col = rows // 2, cols // 2
+def cumulative_histogram(image):
+    hist = cv2.calcHist([image],[0],None,[256],[0,256])
+    cumhist = np.cumsum(hist).astype(np.float64)
+    cumhist = cumhist/cumhist[-1]
+    return cumhist
 
-    # Maak een grid van (x, y)-coördinaten met het centrum op de middenpositie
-    y, x = np.ogrid[:rows, :cols]
-    y -= center_row
-    x -= center_col
+def show_results(image, result_image):
+    fig = plt.figure(figsize=(20,15))
+    ax = fig.add_subplot(321)
+    ax.set_title("Original Image")
+    ax0 = fig.add_subplot(322)
+    ax0.set_title("Image after Transformation")
+    ax1 = fig.add_subplot(323)
+    ax1.set_title("Histogram of Original")
+    ax2 = fig.add_subplot(324, sharex=ax1)
+    ax2.set_title("Histogram after Transformation")
+    ax3 = fig.add_subplot(325, sharex=ax1)
+    ax3.set_title("Cumulative Histogram of Original")
+    ax4 = fig.add_subplot(326, sharex=ax1)
+    ax4.set_title("Cumulative Histogram after Transformation")
+    ax1.set_xlim([0,255])
+    ax.imshow(image, cmap=plt.get_cmap("gray"))
+    ax0.imshow(result_image, cmap=plt.get_cmap("gray"))
+    ax1.plot(cv2.calcHist([image],[0],None,[256],[0,256]))
+    ax2.plot(cv2.calcHist([result_image],[0],None,[256],[0,256]))
+    ax3.plot(cumulative_histogram(image))
+    ax4.plot(cumulative_histogram(result_image))
+    plt.show()
 
-    # Bereken het Gaussische filtermasker
-    H = np.exp(-(x ** 2 + y ** 2) / (2 * sigma ** 2))
-    H /= np.sum(H)  # Normeer zodat de som gelijk is aan 1
-    return H
+def histogram_matching(inframe,orframe):
+    show_results(orframe, inframe)
+    ref = cumulative_histogram(orframe)
+    low = cumulative_histogram(inframe)
+    low_normalized = low / low.max()
+    ref_normalized = ref / ref.max()
 
-def wiener_filter(image, H, k):
-    H = np.roll(H,int(H.shape[0]/2),0)
-    H = np.roll(H, int(H.shape[1] / 2), 1)
+    lookup_table = np.zeros(256, dtype=np.uint8)
+    j = 1
+    for i in range(256):
+        while j < 256 and ref_normalized[j] <= low_normalized[i]:
+            j += 1
+        lookup_table[i] = j - 1
 
-    # frequency of modified filter
-    H_fft = np.fft.fft2(H,s=image.shape)
-    H_fft = np.fft.fftshift(H_fft)
+    outframe = cv2.LUT(inframe, lookup_table)
+    show_results(orframe, outframe)
+    return outframe
 
-    # Compute the Wiener filter
-    F = np.conj(H_fft) / (np.abs(H_fft) ** 2 + k)
-
-    # Compute the FFT of the image
-    image_fft = np.fft.fft2(image)
-    image_fft_shifted = np.fft.fftshift(image_fft)
-
-    image_f_filter = image_fft_shifted * F
-
-    ifshift = np.fft.ifftshift(image_f_filter)
-    ifbeeld = np.fft.ifft2(ifshift)
-    return ifbeeld.real
-
-def process_video(input_path, output_path,s=2,k=0.1):
+def process_video(input_path,original, output_path):
     # Open the video file
     cap = cv2.VideoCapture(input_path)
+    capOrig = cv2.VideoCapture(original)
 
     # Get video properties
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -56,27 +68,36 @@ def process_video(input_path, output_path,s=2,k=0.1):
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
-    mask = gaussian_filter((frame_height,frame_width), s)
-
-    while cap.isOpened():
+    while cap.isOpened() and capOrig.isOpened():
         ret, frame = cap.read()
+        ret, frameOrig = capOrig.read()
         if not ret:
             break
 
-        # Apply the Wiener filter to each color channel
-        output_0 = wiener_filter(frame[:, :, 0], mask, k)
-        output_1 = wiener_filter(frame[:, :, 1], mask, k)
-        output_2 = wiener_filter(frame[:, :, 2], mask, k)
+        #histogram_matching(frame[:, :, 0], frameOrig[:, :, 0])
+        #histogram_matching(frame[:, :, 1], frameOrig[:, :, 1])
+        #histogram_matching(frame[:, :, 2], frameOrig[:, :, 2])
 
-        output_0 = cv2.normalize(output_0,None,0,255,norm_type=cv2.NORM_MINMAX)
-        output_1 = cv2.normalize(output_1, None, 0, 255, norm_type=cv2.NORM_MINMAX)
-        output_2 = cv2.normalize(output_2, None, 0, 255, norm_type=cv2.NORM_MINMAX)
+        hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+        v = cv2.subtract(v, 30)
+        #v = cv2.normalize(v,None,0,255,norm_type=cv2.NORM_MINMAX)
+        #s = cv2.normalize(s,None,0,255,norm_type=cv2.NORM_MINMAX)
+        s = cv2.add(s,40)
+        v = np.clip(v, 0, 255)
+        s = np.clip(s, 0, 255)
+        final_hsv = cv2.merge((h, s, v))
+        frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+
+        #output_0 = cv2.normalize(frame[:, :, 0],None,0,255,norm_type=cv2.NORM_MINMAX)
+        #output_1 = cv2.normalize(frame[:, :, 1], None, 0, 255, norm_type=cv2.NORM_MINMAX)
+        #output_2 = cv2.normalize(frame[:, :, 2], None, 0, 255, norm_type=cv2.NORM_MINMAX)
         #output_0 = np.clip(output_0, 0, 255)
         #output_1 = np.clip(output_1, 0, 255)
         #output_2 = np.clip(output_2, 0, 255)
 
         # Merge the color channels back together
-        frame = cv2.merge((output_0, output_1, output_2)).astype(np.uint8)
+        #frame = cv2.merge((frame[:, :, 0], frame[:, :, 1], frame[:, :, 2])).astype(np.uint8)
 
         # Write the processed frame
         out.write(frame)
@@ -92,7 +113,8 @@ def process_video(input_path, output_path,s=2,k=0.1):
     cv2.destroyAllWindows()
 
 def main():
-    video_clip = VideoFileClip("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4")
+    print(moviepy.__version__)
+    """video_clip = VideoFileClip("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4")
     W,H = video_clip.size
     print(W,H)
     audio_clip = video_clip.audio
@@ -101,11 +123,11 @@ def main():
     video_clip = video_clip.set_audio(audio_clip)
     video_clip.write_videofile("output/original_video.mp4")
     audio_clip.close()
-    video_clip.close()
+    video_clip.close()"""
 
-    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output.mp4",1,0.4)
-    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output1.mp4",1.5,0.5)
-    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output2.mp4",2,0.6)
+    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4","../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output.mp4")
+    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output1.mp4")
+    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/output2.mp4")
 
 if __name__ == '__main__':
     main()
