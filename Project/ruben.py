@@ -124,25 +124,17 @@ def process_video(input_path, output_path):
     out.release()
     cv2.destroyAllWindows()
 
-def stabilize_video(input_path, output_path):
-    # Open het video bestand
+def stabilize_background(input_path, output_path):
     cap = cv2.VideoCapture(input_path)
-    # Haal de frames per seconde (fps) op
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-    # Haal de breedte en hoogte van de frames op
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    # Definieer de codec en maak VideoWriter object
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    # Initiële feature points detectie met ShiTomasi corner detector
-    lk_params = dict(winSize=(15, 15), maxLevel=2,
-                     criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-    feature_params = dict(maxCorners=200, qualityLevel=0.01, minDistance=30, blockSize=3)
-    ret, prev_frame = cap.read()
+    _, prev_frame = cap.read()
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-    prev_pts = cv2.goodFeaturesToTrack(prev_gray, mask=None, **feature_params)
+    prev_bg = cv2.createBackgroundSubtractorMOG2().apply(prev_frame)
 
     transforms = []
     for i in range(int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - 1):
@@ -150,17 +142,20 @@ def stabilize_video(input_path, output_path):
         if not ret:
             break
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
-        curr_pts, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, None, **lk_params)
-        # Filter only good points
+        curr_bg = cv2.createBackgroundSubtractorMOG2().apply(curr_frame)
+
+        # Bereken de optische stroom tussen achtergrondframes
+        prev_pts = cv2.goodFeaturesToTrack(prev_bg, mask=None, maxCorners=200, qualityLevel=0.01, minDistance=30, blockSize=3)
+        curr_pts, status, _ = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, None, winSize=(15, 15), maxLevel=2, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
         good_old = prev_pts[status == 1]
         good_new = curr_pts[status == 1]
-        # Estimate transformation matrix
-        m = cv2.estimateAffinePartial2D(good_old, good_new)[0]
+
+        m, _ = cv2.estimateAffinePartial2D(good_old, good_new)
         transforms.append(m)
         prev_gray = curr_gray.copy()
-        prev_pts = good_new.reshape(-1, 1, 2)
+        prev_bg = curr_bg.copy()
 
-    # Apply transformation to stabilize video
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     for i in range(len(transforms)):
         ret, frame = cap.read()
@@ -172,11 +167,10 @@ def stabilize_video(input_path, output_path):
 
     cap.release()
     out.release()
-    print("Video stabilisatie voltooid!")
-
+    print("Achtergrond stabilisatie voltooid!")
 
 def main():
-    print("Functie")
+    """print("Functie")
     # Het AVI-bestand dat je wilt converteren
     input_file = "../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4"
     # Het MP4-bestand dat je wilt creëren
@@ -184,9 +178,9 @@ def main():
     # Lees het AVI-bestand in
     video_clip = VideoFileClip(input_file)
     # Schrijf het bestand naar MP4 formaat
-    video_clip.write_videofile(input_mov_file, codec='libx264')
+    video_clip.write_videofile(input_mov_file, codec='libx264')"""
 
-    stabilize_video("output/input_mov_video.mov", "output/stabilized_video.mp4")
+    stabilize_background("output/input_mov_video.mov", "output/stabilized_video.mp4")
 
     #stabilizer = VidStab()
     #stabilizer.stabilize(input_path="output/input_mov_video.mov", output_path="output/input_avi_video.avi")
