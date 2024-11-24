@@ -19,3 +19,12 @@ def printProgressBar(iteration, total, prefix = 'Progress:', suffix = 'Complete'
     # Print New Line on Complete
     if iteration == total: 
         print()
+
+def mono_to_sterio(left_chanel: list[float], right_chanel: list[float]):
+    return [[left_chanel[i], right_chanel[i]] for i in range(len(left_chanel))]
+
+
+def stereo_to_mono(stereo_audio: list[list[float]]):
+    left_channel = [sample[0] for sample in stereo_audio]
+    right_channel = [sample[1] for sample in stereo_audio]
+    return (left_channel, right_channel)
