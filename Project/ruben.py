@@ -78,6 +78,85 @@ def wiener_filter(image, H, k):
     ifbeeld = np.fft.ifft2(ifshift)
     return ifbeeld.real
 
+def verbeter_frame():
+    # Laad de afbeelding
+    image = cv2.imread('output/testfoto.png')
+
+    # Converteer de afbeelding naar de YCrCb-kleurruimte
+    ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+
+    # Splits de kanalen
+    y, cr, cb = cv2.split(ycrcb)
+
+    # Pas Gaussian Blur toe op het Y-kanaal om ruis te verminderen
+    y_blurred = cv2.GaussianBlur(y, (3, 3), 0)
+
+    # Voeg de kanalen weer samen
+    ycrcb = cv2.merge([y_blurred, cr, cb])
+
+    # Converteer terug naar de BGR-kleurruimte
+    image_denoised = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
+    # Pas histogram equalization toe om het contrast te verbeteren
+    image_yuv = cv2.cvtColor(image_denoised, cv2.COLOR_BGR2YUV)
+    image_yuv[:, :, 0] = cv2.equalizeHist(image_yuv[:, :, 0])
+    image_enhanced = cv2.cvtColor(image_yuv, cv2.COLOR_YUV2BGR)
+
+    # Toon de originele en verbeterde afbeeldingen
+    cv2.imshow('Original Image', image)
+    cv2.imshow('Enhanced Image', image_enhanced)
+
+    # Sla de verbeterde afbeelding op
+    cv2.imwrite('output/enhanced_image.jpg', image_enhanced)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+def verbeter_frame_nieuw():
+    # Laad de afbeelding
+    image = cv2.imread('output/testfoto.png')
+
+    # Converteer de afbeelding naar de YCrCb-kleurruimte
+    ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+
+    # Splits de kanalen
+    y, cr, cb = cv2.split(ycrcb)
+
+    # Pas Gaussian Blur toe op het Y-kanaal om ruis te verminderen
+    y_blurred = cv2.GaussianBlur(y, (5, 5), 0)
+
+    # Voeg de kanalen weer samen
+    ycrcb = cv2.merge([y_blurred, cr, cb])
+
+    # Converteer terug naar de BGR-kleurruimte
+    image_denoised = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
+    # Pas histogram equalization toe om het contrast te verbeteren
+    image_yuv = cv2.cvtColor(image_denoised, cv2.COLOR_BGR2YUV)
+    image_yuv[:, :, 0] = cv2.equalizeHist(image_yuv[:, :, 0])
+    image_enhanced = cv2.cvtColor(image_yuv, cv2.COLOR_YUV2BGR)
+
+    # Verbeter de kleuren
+    lab = cv2.cvtColor(image_enhanced, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l_clahe = clahe.apply(l)
+    lab_clahe = cv2.merge((l_clahe, a, b))
+    image_clahe = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
+
+    # Pas een meer geavanceerde ruisonderdrukking toe (Non-Local Means Denoising)
+    image_denoised_final = cv2.fastNlMeansDenoisingColored(image_clahe, None, 20, 10, 7, 23)
+
+    # Toon de originele en verbeterde afbeeldingen
+    cv2.imshow('Original Image', image)
+    cv2.imshow('Enhanced Image', image_denoised_final)
+
+    # Sla de verbeterde afbeelding op
+    cv2.imwrite('output/enhanced_image.jpg', image_denoised_final)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
 def process_video(input_path, output_path):
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -180,7 +259,7 @@ def main():
     # Schrijf het bestand naar MP4 formaat
     video_clip.write_videofile(input_mov_file, codec='libx264')"""
 
-    stabilize_background("output/input_mov_video.mov", "output/stabilized_video.mp4")
+    #stabilize_background("output/input_mov_video.mov", "output/stabilized_video.mp4")
 
     #stabilizer = VidStab()
     #stabilizer.stabilize(input_path="output/input_mov_video.mov", output_path="output/input_avi_video.avi")
@@ -189,7 +268,7 @@ def main():
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4", "output/output.mp4")
     #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/tussenstap.mov")
 
-
+    verbeter_frame_nieuw()
 
 
 if __name__ == '__main__':
