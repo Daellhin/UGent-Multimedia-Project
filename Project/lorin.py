@@ -1,60 +1,128 @@
-import math
-import os
-import random
-import re
-from collections import namedtuple
-from functools import reduce
-from operator import concat
-from typing import Any, Callable
-from utils import printProgressBar
+from typing import Callable, Literal
+
 import cv2
+import matplotlib.pyplot as plt
+import noisereduce as nr
 import numpy as np
-import scipy.ndimage
-import simpleaudio as sa
-from matplotlib import pyplot as plt
-from moviepy.editor import AudioClip, VideoFileClip, AudioFileClip
+import scipy.fft as fft
+import soundfile as sf
+from moviepy import AudioClip, AudioFileClip, VideoFileClip
+from scipy import fft, signal
 from scipy.io import wavfile
-from scipy.signal import istft, stft, wiener
+from utils import *
+from visualisations import *
 
 show_images = True
 
-def play_stereo_audio(stereo_audio):
-    # Create a 2-channel stereo audio buffer
-    sample_rate = 44100
-    
-    # Play the stereo audio buffer
-    play_obj = sa.play_buffer(stereo_audio, 2, 2, sample_rate)
-    play_obj.wait_done()
+
+def sterio_notch_filter(
+    stereo_audio: list[list[float]], fs: int, freq: float, Q: float = 30.0
+) -> list[list[float]]:
+    left_channel, right_channel = stereo_to_mono(stereo_audio)
+
+    b, a = signal.iirnotch(freq, Q, fs)
+    left_filtered = signal.filtfilt(b, a, left_channel)
+    right_filtered = signal.filtfilt(b, a, right_channel)
+
+    return mono_to_sterio(left_filtered, right_filtered)
+
+
+def stereo_butterworth_filter(
+    type: Literal["lowpass", "highpass"],
+    stereo_audio: list[list[float]],
+    fs: int,
+    cutoff: float,
+    order=5,
+):
+    left_channel, right_channel = stereo_to_mono(stereo_audio)
+
+    nyquist = 0.5 * fs
+    normal_cutoff = cutoff / nyquist
+    b, a = signal.butter(order, normal_cutoff, btype=type)
+
+    filtered_left = signal.lfilter(b, a, left_channel)
+    filtered_right = signal.lfilter(b, a, right_channel)
+
+    return mono_to_sterio(filtered_left, filtered_right)
+
+
+def mono_spectral_noise_filter(
+    audio: list[float],
+    fs: int,
+    noise_estimation_time=0.01,
+    kernel_size=(1, 15),
+):
+    """
+    Estimates the noise power in each frequency using the first samples of the audio.
+    If noise power is greater than the magnitude of the frequency, the frequency is set to 0.
+    """
+    _, _, stft = signal.stft(audio, fs)
+    magnitude = abs(stft)
+    phase = np.exp(1.0j * np.angle(stft))
+
+    noise_estimation_samples = int(fs * noise_estimation_time)
+    noise_power = np.mean(magnitude[:, :noise_estimation_samples], axis=1)
+    noise_power = noise_power * 1.1
+    binary_mask = (magnitude > noise_power[:, None]).astype(float)
+    binary_mask = signal.medfilt(binary_mask, kernel_size)
+    frequencies_filtered = magnitude * binary_mask
+
+    stft_filtered = frequencies_filtered * phase
+    _, audio_filtered = signal.istft(stft_filtered, fs)
+    return audio_filtered
+
+
+def stereo_spectral_noise_estimation_filter(
+    stereo_audio: list[list[float]],
+    fs: int,
+    noise_estimation_time=0.01,
+    kernel_size=(1, 15),
+):
+    left_channel, right_channel = stereo_to_mono(stereo_audio)
+
+    filtered_left = mono_spectral_noise_filter(
+        left_channel, fs, noise_estimation_time, kernel_size
+    )
+    filtered_right = mono_spectral_noise_filter(
+        right_channel, fs, noise_estimation_time, kernel_size
+    )
+
+    return mono_to_sterio(filtered_left, filtered_right)
 
 
 def create_audio_clip(samples, fps):
     def make_frame(t):
         return np.array(samples)
-       
+
     return AudioClip(make_frame, duration=len(samples) / fps)
 
+
+def stereo_noise_reduce_filter(audio_samples: list[list[float]], fs: int):
+    left_channel, right_channel = stereo_to_mono(audio_samples)
+    filtered_left = nr.reduce_noise(left_channel, fs, True)
+    filtered_right = nr.reduce_noise(right_channel, fs, True)
+    return mono_to_sterio(filtered_left, filtered_right)
+
+
 def reduce_noise(
-    audio_samples: list[list[float]], filter_size: int = 5
+    audio_samples: list[list[float]], fs: int, filter_size: int = 5
 ) -> list[list[float]]:
-    """
-    Apply Wiener noise reduction to audio samples
+    filtered_audio_1 = sterio_notch_filter(audio_samples, fs, 100, 1)
+    filtered_audio_2 = stereo_butterworth_filter(
+        "lowpass", filtered_audio_1, fs, 7500, 30
+    )
+    filtered_audio_3 = stereo_spectral_noise_estimation_filter(filtered_audio_2, fs, 0.01)
+    # filtered_audio_3 = stereo_noise_reduce_filter(filtered_audio_2, fs)
 
-    Args:
-        audio_samples: List of audio sample frames
-        filter_size: Size of the Wiener filter window (default 5)
+    compare_stereo_spectrograms(
+        [audio_samples, filtered_audio_2, filtered_audio_3],
+        fs,
+        "Noise reduction Spectogram",
+        end_time=5,
+        log_scale=False,
+    )
 
-    Returns:
-        Noise-reduced audio samples
-    """
-    # Convert to numpy array for processing
-    audio_array = np.array(audio_samples)
-
-    # Apply Wiener filter along each channel
-    denoised_array = np.array(
-        [wiener(channel, filter_size) for channel in audio_array.T]
-    ).T
-
-    return denoised_array.tolist()
+    return filtered_audio_3
 
 
 def process_frame(
@@ -89,25 +157,36 @@ def process_video(input_path: str, output_path: str):
 
     video = VideoFileClip(input_path)
     # -- Video processing --
+    print(f"Processing video (s={video.duration})")
     # frame_duration = 1 / video.fps  # frame duration in seconds
     # processed_video: VideoFileClip = video.fl(
     #     lambda gf, t: process_frame(gf, t, frame_duration)
     # )
     # cv2.destroyAllWindows()
-    processed_video = video  # for debuging audio without video
+    # processed_video = video  # for debuging audio without video
 
     # -- Audio processing --
-    fs = video.fps
-    audio_samples: list[list[float]] = list(video.audio.iter_frames())
-    processed_audio = reduce_noise(audio_samples)
+    # Load audio
+    fs = video.audio.fps
+    print(f"Loading audio frames (fs={fs}) (s={video.audio.duration})")
+    audio_samples: list[list[float]] = list(video.audio.to_soundarray())
 
-    wavfile.write(f"{output_path}.wav", 4400, np.array(processed_audio, dtype=np.float32))
-    t = AudioFileClip("output/output.mp4.wav")
-    result: VideoFileClip = processed_video.set_audio(t)
-    #play_stereo_audio(processed_audio)
+    # Process audio
+    print(f"Applying audio filters")
+    processed_audio = reduce_noise(audio_samples, fs)
+    video.audio.reader
 
-    # -- Output results --
-    result.write_videofile(output_path)
+    # Audio output
+    audio_path = f"{output_path}.wav"
+    print(f"Writing audio to:", audio_path)
+    wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
+
+    # t = AudioFileClip("output/output.mp4.wav")
+    # result: VideoFileClip = processed_video.set_audio(t)
+    # #play_stereo_audio(processed_audio)
+
+    # # -- Output results --
+    # result.write_videofile(output_path)
 
 
 def main():
@@ -119,3 +198,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# https://github.com/tennisonliu/noise_reduction/blob/master/spectral_gating.ipynb
+# https://www.google.com/search?client=firefox-b-d&q=python+spectral+gating
