@@ -102,11 +102,11 @@ def histogram_matching(inframe,orframe,show=False,type=""):
     return outframe
 
 def process_frame(frame, frameOrig,show_steps=False):
-    # BGR modifier
+    # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame,cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
-    yuvor = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YUV)
-    yo, uo, vo = cv2.split(yuvor)
+    yuv_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YUV)
+    yo, uo, vo = cv2.split(yuv_or)
 
     if show_steps:
         cv2.imwrite("output/start_Frame.jpg",frame)
@@ -117,36 +117,34 @@ def process_frame(frame, frameOrig,show_steps=False):
         #show_histogram(v, vo, "V", "V Original")
         #show_spectrum(v, vo, "V")
 
-    #y = cv2.add(y,10)
-    u = cv2.subtract(u,77)
-    v = cv2.subtract(v,77)
-    y = cv2.multiply(y,0.90)
-    u = cv2.multiply(u,2.5)
-    v = cv2.multiply(v,2.5)
-    #y = scipy.ndimage.gaussian_filter(y, 1.5)
-    #u = scipy.ndimage.gaussian_filter(u, 1.2)
-    #v = scipy.ndimage.gaussian_filter(v, 1.2)
+    #y = scipy.ndimage.median_filter(y, (3,3))
+    y = cv2.blur(y,(7,7))
 
     rows, cols = v.shape
-    kernel_x = cv2.getGaussianKernel(cols, 2*cols)
-    kernel_y = cv2.getGaussianKernel(rows, 2*rows)
+    kernel_x = cv2.getGaussianKernel(cols, 1080/2)
+    kernel_y = cv2.getGaussianKernel(rows, 1080/2)
     kernel = kernel_y * kernel_x.T
-    mask = (1 - kernel / np.linalg.norm(kernel))
-    mask = cv2.normalize(mask, None, 0, 4, cv2.NORM_MINMAX).astype(np.uint8)
+    mask = 1-kernel / np.linalg.norm(kernel)
+    mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
     if show_steps:
         plt.imshow(mask)
         plt.show()
-    y = cv2.add(y, 4*mask)
-    u = cv2.add(u, mask)
-    v = cv2.add(v, mask)
+    y = cv2.multiply(y.astype(np.float64), 3/4+1/2*mask)
+    u = cv2.multiply(u.astype(np.float64), 1+0.01*mask)
+    v = cv2.multiply(v.astype(np.float64), 1+0.01*mask)
+    u = cv2.multiply(u,2.5)
+    u = cv2.subtract(u,190)
+    v = cv2.multiply(v,2.1)
+    v = cv2.subtract(v,140)
 
-    y = np.clip(y,0,255)
-    u = np.clip(u,0,255)
-    v = np.clip(v,0,255)
-    #y = cv2.normalize(y, None, 0, 255, cv2.NORM_MINMAX)
-    #u = cv2.normalize(u,None,0,255,cv2.NORM_MINMAX)
-    #v = cv2.normalize(v, None, 0, 255, cv2.NORM_MINMAX)
+    #u = scipy.ndimage.gaussian_filter(u,1.2)
+    #v = scipy.ndimage.gaussian_filter(v, 1.2)
+    y = np.clip(y,0,255).astype(np.uint8)
+    u = np.clip(u,0,255).astype(np.uint8)
+    v = np.clip(v,0,255).astype(np.uint8)
+    frame = cv2.merge((y, u, v))
 
+    frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
     if show_steps:
         cv2.imwrite("output/YUV-edit_Frame.jpg",frame)
         show_histogram(y, yo, "Y edit", "Y Original")
@@ -156,27 +154,18 @@ def process_frame(frame, frameOrig,show_steps=False):
         show_histogram(v, vo, "V edit", "V Original")
         #show_spectrum(v, vo, "V")
 
-
-    frame = cv2.merge((y, u, v))
-
     # BGR modifier
-    frame = cv2.cvtColor(frame,cv2.COLOR_YUV2BGR)
-    #b, g, r = cv2.split(frame)
-    #bo, go, ro = cv2.split(frameOrig)
+    b, g, r = cv2.split(frame)
+    bo, go, ro = cv2.split(frameOrig)
 
-    #r = np.clip(r, 0, 255)
-    #g = np.clip(g, 0, 255)
-    #b = np.clip(b, 0, 255)
-    """
     if show_steps:
-        cv2.imwrite("output/start_Frame.jpg",frame)
         show_histogram(r, ro, "Red", "Red Original")
-        show_spectrum(r, ro, "Red")
+        #show_spectrum(r, ro, "Red")
         show_histogram(g, go, "Green", "Green Original")
-        show_spectrum(g, go, "Green")
+        #show_spectrum(g, go, "Green")
         show_histogram(b, bo, "Blue", "Blue Original")
-        show_spectrum(b, bo, "Blue")
-    """
+        #show_spectrum(b, bo, "Blue")
+
     """fft_r = np.fft.fft2(r)
     fft_r = np.fft.fftshift(fft_r)
     fft_r_filter = fft_r * butterworth_filter(r.shape, 5, 300)
@@ -208,13 +197,10 @@ def process_frame(frame, frameOrig,show_steps=False):
     #g = cv2.multiply(g,0.70)
     #b = cv2.multiply(b,0.6)
 
-    #r = np.clip(r,0,255)
-    #g = np.clip(g, 0, 255)
-    #b = np.clip(b, 0, 255)
-    #r = cv2.normalize(r, None, 0, 255, norm_type=cv2.NORM_MINMAX).astype(np.uint8)
-    #g = cv2.normalize(g,None,0,255,norm_type=cv2.NORM_MINMAX).astype(np.uint8)
-    #b = cv2.normalize(b,None,0,255,norm_type=cv2.NORM_MINMAX).astype(np.uint8)
-    #frame = cv2.merge((b,g,r))
+    r = np.clip(r,0,255).astype(np.uint8)
+    g = np.clip(g, 0, 255).astype(np.uint8)
+    b = np.clip(b, 0, 255).astype(np.uint8)
+    frame = cv2.merge((b,g,r))
 
     #HSV modifiers
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -223,31 +209,27 @@ def process_frame(frame, frameOrig,show_steps=False):
     ho, so, vo = cv2.split(hsvOrig)
     
     if show_steps:
-        cv2.imwrite("output/edit_frame.jpg",frame)
-        show_histogram(h, ho, "Hue", "Hue Original")
+        cv2.imwrite("output/BGR-edit_frame.jpg",frame)
+        #show_histogram(h, ho, "Hue", "Hue Original")
         #show_spectrum(h,ho,"Hue")
-        show_histogram(v, vo, "Value", "Value Original")
+        #show_histogram(v, vo, "Value", "Value Original")
         #show_spectrum(v,vo,"Value")
-        show_histogram(s, so, "Saturation", "Saturation Original")
+        #show_histogram(s, so, "Saturation", "Saturation Original")
         #show_spectrum(s,so,"Saturation")
 
+    #h = scipy.ndimage.median_filter(h,(1,3))
+    #s = scipy.ndimage.median_filter(s, (5,5))
+    #v = scipy.ndimage.median_filter(v,(3,3))
+
     #h = cv2.multiply(h,0.99)
-    v = cv2.multiply(v, 0.90)
-    s = cv2.add(s, 10)
-    s = cv2.multiply(s,1.20)
+    #v = cv2.multiply(v, 0.90)
+    #s = cv2.multiply(s,1.75)
+    s = cv2.add(s, 20)
 
-    #h = scipy.ndimage.median_filter(h,(5,5))
-    #v = scipy.ndimage.maximum_filter(v, (3,3))
-    #s = scipy.ndimage.maximum_filter(s, (3,3))
-    #h = scipy.ndimage.gaussian_filter(h,1.1)
-    s = scipy.ndimage.gaussian_filter(s,1.5)
-    v = scipy.ndimage.gaussian_filter(v,1.5)
-
-    #v = cv2.normalize(v,None,0,255,norm_type=cv2.NORM_MINMAX)
-    #s = cv2.normalize(s,None,0,255,norm_type=cv2.NORM_MINMAX)
-    v = np.clip(v, 0, 255)
-    s = np.clip(s, 0, 255)
-
+    #s = scipy.ndimage.gaussian_filter(s, 4)
+    h = np.clip(h,0,255).astype(np.uint8)
+    v = np.clip(v, 0, 255).astype(np.uint8)
+    s = np.clip(s, 0, 255).astype(np.uint8)
     final_hsv = cv2.merge((h, s, v))
     frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
     
@@ -308,18 +290,18 @@ def main():
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "output/2017-01-07_President_Obama's_Weekly_Address.mp4")
-    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
-    process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-                  "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-                  "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")
-    process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
-                  "../SourceVideos/Robin_Singing_video.mp4",
-                  "output/Robin_Singing_video.mp4")
-    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-                  "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-                  "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4")
+    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
+    #process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #              "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")
+    #process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
+    #              "../SourceVideos/Robin_Singing_video.mp4",
+    #              "output/Robin_Singing_video.mp4")
+    #process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #              "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #              "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4")
 
 if __name__ == '__main__':
     main()
