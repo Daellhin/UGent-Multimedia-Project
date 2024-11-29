@@ -37,7 +37,7 @@ def process_frame(frame, frameOrig,show_steps=False):
         #show_spectrum(v, vo, "V")
 
     #y = scipy.ndimage.median_filter(y, (3,3))
-    y = cv2.blur(y,(9,9))
+    y = cv2.blur(y,(5,5))
 
     rows, cols = v.shape
     kernel_x = cv2.getGaussianKernel(cols, 1080/2)
@@ -84,7 +84,7 @@ def process_frame(frame, frameOrig,show_steps=False):
         show_spectrum(g, go, "Green")
         show_histogram(b, bo, "Blue", "Blue Original")
         show_spectrum(b, bo, "Blue")
-
+    """
     fft_r = np.fft.fft2(r)
     fft_r = np.fft.fftshift(fft_r)
     fft_r_filter = fft_r * butterworth_filter(r.shape, 3, 400)
@@ -102,7 +102,7 @@ def process_frame(frame, frameOrig,show_steps=False):
     fft_b_filter = fft_b * butterworth_filter(r.shape, 3, 400)
     ifft_b = np.fft.ifftshift(fft_b_filter)
     ifft_b = np.fft.ifft2(ifft_b)
-    b = ifft_b.real
+    b = ifft_b.real"""
     if show_steps:
         show_spectrum(r, ro, "Red")
         show_spectrum(g, go, "Green")
@@ -160,6 +160,7 @@ def process_frame(frame, frameOrig,show_steps=False):
     return frame
 
 def process_video(input_path,original, output_path, show_steps=False, show_processed_frame=True):
+    print("Processing "+input_path)
     # Open the video file
     cap = cv2.VideoCapture(input_path)
     capOrig = cv2.VideoCapture(original)
@@ -180,14 +181,18 @@ def process_video(input_path,original, output_path, show_steps=False, show_proce
             break
 
         frame = process_frame(frame,frameOrig,show_steps)
-        #TODO: evaluate frame
-        
-
         out.write(frame)
 
         if show_processed_frame:
             cv2.imshow('Processing Video', frame)
         if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
+            #evaluate frame
+            mae = cv2.mean(np.abs(cv2.subtract(frame,frameOrig)))
+            print(f"MAE: B={mae[0]} G={mae[1]} R={mae[2]}")
+            mse = cv2.mean(cv2.pow(cv2.subtract(frame,frameOrig),2))
+            print(f"MSE: B={mse[0]} G={mse[1]} R={mse[2]}")
+            psnr = 10* cv2.log(cv2.divide(255**2,mse))
+            print(f"PSNR: B={psnr[0][0]} G={psnr[1][0]} R={psnr[2][0]}")
             break
 
     # Release everything
@@ -209,11 +214,8 @@ def main():
     video_clip.close()"""
 
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "../SourceVideos/nieuwe_output.mp4",
-                  "output/nieuwe_output.mp4", True)
-    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-    #              "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-    #              "output/2017-01-07_President_Obama's_Weekly_Address.mp4",True)
+                  "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
+                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4")
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
