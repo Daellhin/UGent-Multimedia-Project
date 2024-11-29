@@ -1,5 +1,7 @@
 import math
 import random
+from signal import signal
+
 import cv2
 import numpy as np
 import scipy
@@ -9,7 +11,54 @@ from scipy.io import wavfile
 import moviepy
 from visualisations import *
 
+def create_gaussian_kernel(size=15, sigma=3):
+    """Create a 2D Gaussian kernel."""
+    x = np.linspace(-size // 2, size // 2, size)
+    y = np.linspace(-size // 2, size // 2, size)
+    x, y = np.meshgrid(x, y)
+    kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
+    return kernel / kernel.sum()
+
 def process_frame(frame, frameOrig, show_steps=False):
+    # Wiener filter
+    def wiener_filter(img, kernel, k=0.01):
+        # Process each channel separately
+        restored_channels = []
+        for channel in cv2.split(img):
+            # Pad the kernel to match image size by placing it in the center
+            padded_kernel = np.zeros(channel.shape)
+            kh, kw = kernel.shape
+            center_y = padded_kernel.shape[0] // 2 - kh // 2
+            center_x = padded_kernel.shape[1] // 2 - kw // 2
+            padded_kernel[center_y: center_y + kh, center_x: center_x + kw] = kernel
+
+            # Convert to frequency domain
+            # H = np.fft.fft2(np.fft.ifftshift(padded_kernel))
+            H = np.fft.fft2(np.fft.fftshift(padded_kernel))
+            G = np.fft.fft2(channel.astype(float))
+
+            # Apply Wiener filter
+            H_conj = np.conj(H)
+            H_abs_sq = np.abs(H) ** 2
+            F = H_conj / (H_abs_sq + k) * G
+
+            # Convert back to spatial domain
+            restored = np.abs(np.fft.ifft2(F))
+
+            # Normalize to [0, 255] range
+            restored = (restored - restored.min()) * 255 / (restored.max() - restored.min())
+            restored_channels.append(restored.astype(np.uint8))
+
+        # Merge channels back together
+        restored_image = cv2.merge(restored_channels)
+
+        # show_results_old(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
+        # plot_image(cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
+        return restored_image
+
+    #frame = wiener_filter(frame, create_gaussian_kernel(sigma=1))
+
+
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
@@ -29,8 +78,8 @@ def process_frame(frame, frameOrig, show_steps=False):
     y = cv2.blur(y, (5, 5))
 
     rows, cols = v.shape
-    kernel_x = cv2.getGaussianKernel(cols, 1080 / 2)
-    kernel_y = cv2.getGaussianKernel(rows, 1080 / 2)
+    kernel_x = cv2.getGaussianKernel(cols, 1080/2)
+    kernel_y = cv2.getGaussianKernel(rows, 1080/2)
     kernel = kernel_y * kernel_x.T
     mask = 1 - kernel / np.linalg.norm(kernel)
     mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
@@ -122,8 +171,26 @@ def process_frame(frame, frameOrig, show_steps=False):
         show_histogram(v, vo, "Value", "Value Original")
         show_histogram(s, so, "Saturation", "Saturation Original")
 
-    return frame
+    # Function to process frames with median filter
+    def mediaan_filter_op_frame_basis(frame):
+        # If this is the first frame in the sequence, initialize frames
+        if not hasattr(process_frame, 'frames'):
+            process_frame.frames = [frame] * 4
+        else:
+            # Shift frames and add new frame
+            process_frame.frames = process_frame.frames[1:] + [frame]
 
+        # Calculate median of last 4 frames
+        stacked_frames = np.stack(process_frame.frames, axis=-1)
+        return np.median(stacked_frames, axis=-1).astype(np.uint8)
+
+    frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 12)
+
+    frame = wiener_filter(frame,create_gaussian_kernel())
+
+    frame = mediaan_filter_op_frame_basis(frame)
+
+    return frame
 
 def process_video(input_path, original, output_path, show_steps=False, show_processed_frame=True):
     # Open the video file
@@ -162,10 +229,10 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
 def main():
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4")
-    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",True)
+                  "output/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", False)
+    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",False)
     # process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
     #              "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
     #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")

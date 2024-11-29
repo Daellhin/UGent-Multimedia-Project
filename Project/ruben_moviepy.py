@@ -21,6 +21,9 @@ def process_video(input_path, output_path):
         stacked_frames = np.stack(process_frame.frames, axis=-1)
         return np.median(stacked_frames, axis=-1).astype(np.uint8)
 
+    def stablize_video(frame):
+        print("Stabiel")
+
     # Create a new clip from processed frames
     processed_clips = []
     max_iters = len(clip.size)
@@ -46,7 +49,7 @@ def process_video(input_path, output_path):
     clip.close()
 
     # Close clip to free up resources
-    clip.close()
+    output_clip.close()
 
 
 def main():

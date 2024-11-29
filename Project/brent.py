@@ -288,8 +288,8 @@ def main():
     video_clip.close()"""
 
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",True)
+                  "../SourceVideos/nieuwe_output.mp4",
+                  "output/nieuwe_output.mp4", True)
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
