@@ -313,3 +313,11 @@ def wiener_filter(image_path: str, kernel, k=0.01):
         cv2.cvtColor(img, cv2.COLOR_BGR2RGB),
         cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB),
     ]
+
+def create_gaussian_kernel(size=15, sigma=3):
+    """Create a 2D Gaussian kernel."""
+    x = np.linspace(-size // 2, size // 2, size)
+    y = np.linspace(-size // 2, size // 2, size)
+    x, y = np.meshgrid(x, y)
+    kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
+    return kernel / kernel.sum()
