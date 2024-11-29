@@ -7,67 +7,7 @@ from PIL.ImageChops import multiply
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
-
-def cumulative_histogram(image):
-    hist = cv2.calcHist([image],[0],None,[256],[0,256])
-    cumhist = np.cumsum(hist).astype(np.float64)
-    cumhist = cumhist/cumhist[-1]
-    return cumhist
-
-def show_histogram(image, image2, nameImg="", nameImg2=""):
-    fig = plt.figure(figsize=(20,15))
-    ax = fig.add_subplot(321)
-    ax.set_title(nameImg)
-    ax0 = fig.add_subplot(322)
-    ax0.set_title(nameImg2)
-    ax1 = fig.add_subplot(323)
-    ax1.set_title("Histogram of "+nameImg)
-    ax2 = fig.add_subplot(324, sharex=ax1)
-    ax2.set_title("Histogram of "+nameImg2)
-    ax3 = fig.add_subplot(325, sharex=ax1)
-    ax3.set_title("Cumulative Histogram of "+nameImg)
-    ax4 = fig.add_subplot(326, sharex=ax1)
-    ax4.set_title("Cumulative Histogram of "+nameImg2)
-    ax1.set_xlim([0,255])
-    ax.imshow(image, cmap=plt.get_cmap("gray"))
-    ax0.imshow(image2, cmap=plt.get_cmap("gray"))
-    ax1.plot(cv2.calcHist([image],[0],None,[256],[0,256]))
-    ax2.plot(cv2.calcHist([image2],[0],None,[256],[0,256]))
-    ax3.plot(cumulative_histogram(image))
-    ax4.plot(cumulative_histogram(image2))
-    plt.show()
-
-def magnitude_spectrum(fshift):
-    magnitude_spectrum = np.log(np.abs(fshift) + 1)
-    magnitude_spectrum -= np.min(magnitude_spectrum)
-    magnitude_spectrum *= 255. / np.max(magnitude_spectrum)
-    return magnitude_spectrum
-
-def show_spectrum(image, original_image, figure_name):
-    fft_image = np.fft.fft2(image)
-    fft_image = np.fft.fftshift(fft_image)
-    fft_original = np.fft.fft2(original_image)
-    fft_original = np.fft.fftshift(fft_original)
-    fig = plt.figure()
-    fig.suptitle(figure_name, fontsize=14)
-    ax1 = fig.add_subplot(221)
-    ax1.set_title(figure_name+" before")
-    ax2 = fig.add_subplot(222)
-    ax2.set_title("FFT")
-    ax3 = fig.add_subplot(223)
-    ax3.set_title("FFT original")
-    ax4 = fig.add_subplot(224)
-    ax4.set_title(figure_name+" original")
-    ax1.imshow(image, cmap = "gray")
-    ax2.imshow(magnitude_spectrum(fft_image), cmap = "gray")
-    ax3.imshow(magnitude_spectrum(fft_original), cmap ="gray")
-    ax4.imshow(original_image, cmap ="gray")
-    ax1.axis('off')
-    ax2.axis('off')
-    ax3.axis('off')
-    ax4.axis('off')
-    plt.tight_layout()
-    plt.show()
+from visualisations import *
 
 def butterworth_filter(shape,n,D0):
     H = np.zeros(shape)
@@ -79,27 +19,6 @@ def butterworth_filter(shape,n,D0):
             D = np.sqrt((u - center_row) ** 2 + (v - center_col) ** 2)
             H[u, v] = 1 / (1 + (-D / D0) ** (2 * n))
     return H
-
-def histogram_matching(inframe,orframe,show=False,type=""):
-    if show:
-        show_histogram(orframe, inframe, type + " original", type + " before")
-    ref = cumulative_histogram(orframe)
-    low = cumulative_histogram(inframe)
-    low_normalized = low / low.max()
-    ref_normalized = ref / ref.max()
-
-    lookup_table = np.zeros(256, dtype=np.uint8)
-    j = 1
-    for i in range(256):
-        while j < 256 and ref_normalized[j] <= low_normalized[i]:
-            j += 1
-        lookup_table[i] = j - 1
-
-    outframe = cv2.LUT(inframe, lookup_table)
-
-    if show:
-        show_histogram(orframe, outframe, type + " original", type + " matched")
-    return outframe
 
 def process_frame(frame, frameOrig,show_steps=False):
     # YUV modifier - kringverzwakking
@@ -166,28 +85,28 @@ def process_frame(frame, frameOrig,show_steps=False):
         show_histogram(b, bo, "Blue", "Blue Original")
         show_spectrum(b, bo, "Blue")
 
-    """fft_r = np.fft.fft2(r)
+    fft_r = np.fft.fft2(r)
     fft_r = np.fft.fftshift(fft_r)
-    fft_r_filter = fft_r * butterworth_filter(r.shape, 5, 300)
+    fft_r_filter = fft_r * butterworth_filter(r.shape, 3, 400)
     ifft_r = np.fft.ifftshift(fft_r_filter)
     ifft_r = np.fft.ifft2(ifft_r)
     r = ifft_r.real
     fft_g = np.fft.fft2(g)
     fft_g = np.fft.fftshift(fft_g)
-    fft_g_filter = fft_g * butterworth_filter(r.shape, 5, 300)
+    fft_g_filter = fft_g * butterworth_filter(r.shape, 3, 400)
     ifft_g = np.fft.ifftshift(fft_g_filter)
     ifft_g = np.fft.ifft2(ifft_g)
     g = ifft_g.real
     fft_b = np.fft.fft2(b)
     fft_b = np.fft.fftshift(fft_b)
-    fft_b_filter = fft_b * butterworth_filter(r.shape, 5, 300)
+    fft_b_filter = fft_b * butterworth_filter(r.shape, 3, 400)
     ifft_b = np.fft.ifftshift(fft_b_filter)
     ifft_b = np.fft.ifft2(ifft_b)
     b = ifft_b.real
     if show_steps:
         show_spectrum(r, ro, "Red")
         show_spectrum(g, go, "Green")
-        show_spectrum(b, bo, "Blue")"""
+        show_spectrum(b, bo, "Blue")
 
     #r = scipy.ndimage.gaussian_filter(r, 2)
     #g = scipy.ndimage.gaussian_filter(g, 2.5)
@@ -261,7 +180,9 @@ def process_video(input_path,original, output_path, show_steps=False, show_proce
             break
 
         frame = process_frame(frame,frameOrig,show_steps)
-        # Write the processed frame
+        #TODO: evaluate frame
+        
+
         out.write(frame)
 
         if show_processed_frame:
@@ -290,6 +211,9 @@ def main():
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/nieuwe_output.mp4",
                   "output/nieuwe_output.mp4", True)
+    #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+    #              "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
+    #              "output/2017-01-07_President_Obama's_Weekly_Address.mp4",True)
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
@@ -302,6 +226,21 @@ def main():
     #process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
     #              "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
     #              "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4")
+    #process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    #              "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    #              "output/Apollo_11_Landing_-_first_steps_on_the_moon.mp4")
+    #process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+    #              "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+    #              "output\Breakfast-at-tiffany-s-official®-trailer-hd.mp4")
+    #process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
+    #              "..\ArchiveVideos\Edison_speech,_1920s.mp4",
+    #              "output\ArchiveVideos\Edison_speech,_1920s.mp4")
+    #process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+    #              "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+    #              "output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4")
+    #process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
+    #              "..\ArchiveVideos\The_Dream_of_Kings.mp4",
+    #              "output\The_Dream_of_Kings.mp4")
 
 if __name__ == '__main__':
     main()
