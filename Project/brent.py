@@ -118,7 +118,7 @@ def process_frame(frame, frameOrig,show_steps=False):
         #show_spectrum(v, vo, "V")
 
     #y = scipy.ndimage.median_filter(y, (3,3))
-    y = cv2.blur(y,(7,7))
+    y = cv2.blur(y,(9,9))
 
     rows, cols = v.shape
     kernel_x = cv2.getGaussianKernel(cols, 1080/2)
@@ -160,11 +160,11 @@ def process_frame(frame, frameOrig,show_steps=False):
 
     if show_steps:
         show_histogram(r, ro, "Red", "Red Original")
-        #show_spectrum(r, ro, "Red")
+        show_spectrum(r, ro, "Red")
         show_histogram(g, go, "Green", "Green Original")
-        #show_spectrum(g, go, "Green")
+        show_spectrum(g, go, "Green")
         show_histogram(b, bo, "Blue", "Blue Original")
-        #show_spectrum(b, bo, "Blue")
+        show_spectrum(b, bo, "Blue")
 
     """fft_r = np.fft.fft2(r)
     fft_r = np.fft.fftshift(fft_r)
@@ -289,7 +289,7 @@ def main():
 
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4")
+                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",True)
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
     #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
