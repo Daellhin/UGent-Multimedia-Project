@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 import noisereduce as nr
 import numpy as np
 import pywt
+import scipy
 import scipy.fft as fft
 import soundfile as sf
 from moviepy import AudioClip, AudioFileClip, VideoFileClip
 from scipy import fft, signal
 from scipy.interpolate import interp1d
 from scipy.io import wavfile
-from scipy.signal import find_peaks
 from utils import *
 from visualisations import *
 
@@ -135,7 +135,6 @@ def stereo_reduce_noise_filter(
     )
     return mono_to_stereo(filtered_left, filtered_right)
 
-
 def apply_audio_filters(
     audio_samples: list[list[float]], fs: int, filter_size: int = 5
 ) -> list[list[float]]:
@@ -210,7 +209,7 @@ def process_video(input_path: str, output_path: str):
     audio_path = f"{output_path}.wav"
     print(f"Writing audio to:", audio_path)
     wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
-
+    
     # t = AudioFileClip("output/output.mp4.wav")
     # result: VideoFileClip = processed_video.set_audio(t)
     # #play_stereo_audio(processed_audio)
@@ -232,7 +231,7 @@ def main():
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
         "output/output.mp4",
     )
-
+    
     # compair_audio("output/original.mp4.wav", "output/input.mp4.wav")
     # compair_audio("output/original.mp4.wav", "output/output.mp4.wav")
 

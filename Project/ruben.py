@@ -273,3 +273,43 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+def wiener_filter(image_path: str, kernel, k=0.01):
+    img = cv2.imread(image_path)
+
+    # Process each channel separately
+    restored_channels = []
+    for channel in cv2.split(img):
+        # Pad the kernel to match image size by placing it in the center
+        padded_kernel = np.zeros(channel.shape)
+        kh, kw = kernel.shape
+        center_y = padded_kernel.shape[0] // 2 - kh // 2
+        center_x = padded_kernel.shape[1] // 2 - kw // 2
+        padded_kernel[center_y : center_y + kh, center_x : center_x + kw] = kernel
+
+        # Convert to frequency domain
+        # H = np.fft.fft2(np.fft.ifftshift(padded_kernel))
+        H = np.fft.fft2(np.fft.fftshift(padded_kernel))
+        G = np.fft.fft2(channel.astype(float))
+
+        # Apply Wiener filter
+        H_conj = np.conj(H)
+        H_abs_sq = np.abs(H) ** 2
+        F = H_conj / (H_abs_sq + k) * G
+
+        # Convert back to spatial domain
+        restored = np.abs(np.fft.ifft2(F))
+
+        # Normalize to [0, 255] range
+        restored = (restored - restored.min()) * 255 / (restored.max() - restored.min())
+        restored_channels.append(restored.astype(np.uint8))
+
+    # Merge channels back together
+    restored_image = cv2.merge(restored_channels)
+
+    # show_results_old(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
+    # plot_image(cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
+    return [
+        cv2.cvtColor(img, cv2.COLOR_BGR2RGB),
+        cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB),
+    ]
