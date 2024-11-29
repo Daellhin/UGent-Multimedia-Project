@@ -28,3 +28,21 @@ def stereo_to_mono(stereo_audio: list[list[float]]):
     left_channel = [sample[0] for sample in stereo_audio]
     right_channel = [sample[1] for sample in stereo_audio]
     return (left_channel, right_channel)
+
+def stereo_calculate_MSE(
+    original: list[list[float]], filtered: list[list[float]], n_samples=200000
+):
+    """
+    Returns Mean Squared quadratic Error(MSE) for both chanels for the n first samples
+    """
+    left_original, right_original = stereo_to_mono(original)
+    left_filtered, right_filtered = stereo_to_mono(filtered)
+    mse_left = (
+        sum((left_filtered[i] - left_original[i]) ** 2 for i in range(n_samples))
+        / n_samples
+    )
+    mse_right = (
+        sum((right_filtered[i] - right_original[i]) ** 2 for i in range(n_samples))
+        / n_samples
+    )
+    return (mse_left, mse_right)
