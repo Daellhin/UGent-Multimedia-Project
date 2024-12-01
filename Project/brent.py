@@ -1,5 +1,7 @@
 import math
 import random
+from typing import Sequence
+
 import cv2
 import numpy as np
 import scipy
@@ -9,18 +11,36 @@ from scipy.io import wavfile
 import moviepy
 from visualisations import *
 
-def butterworth_filter(shape,n,D0):
-    H = np.zeros(shape)
+def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
     rows, cols = shape
-    center_row, center_col = rows / 2, cols / 2
+    kernel_x = cv2.getGaussianKernel(cols, sigma)
+    kernel_y = cv2.getGaussianKernel(rows, sigma)
+    kernel = kernel_y * kernel_x.T
+    mask = 1 - kernel / np.linalg.norm(kernel)
+    mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
+    if show:
+        plt.imshow(mask)
+        plt.show()
+    return mask
 
-    for u in range(rows):
-        for v in range(cols):
-            D = np.sqrt((u - center_row) ** 2 + (v - center_col) ** 2)
-            H[u, v] = 1 / (1 + (-D / D0) ** (2 * n))
-    return H
 
-def process_frame(frame, frameOrig,show_steps=False):
+def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_steps=False,evaluate=False,** kwargs) -> tuple[cv2.typing.MatLike, list[float], list[float], list[float]]:
+    """Verwerkt frame, mogelijke tweaks:
+        params = {"YfilterSize": 5, "sigma": 1080/2,"gausUVAdj": 0.01,"gausYAdj": 0.5,"Umultiply": 2.5,"Usubstract": 75,"Vmultiply": 2.1,"Vsubstract": 70,"Sadd": 20,"Smultiply": 1}"""
+    params = {  # Standaardwaarden
+    "YfilterSize": 5,
+    "sigma": 1080 / 2,
+    "gausUVAdj": 0.01,
+    "gausYAdj": 0.5,
+    "Umultiply": 2.5,
+    "Usubstract": 75,
+    "Vmultiply": 2.1,
+    "Vsubstract": 70,
+    "Sadd": 20,
+    "Smultiply": 1
+    }
+    params.update(kwargs)
+
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame,cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
@@ -29,123 +49,59 @@ def process_frame(frame, frameOrig,show_steps=False):
 
     if show_steps:
         cv2.imwrite("output/start_Frame.jpg",frame)
-        #show_histogram(y, yo, "Y", "Y Original")
+        show_histogram(y, yo, "Y", "Y Original")
         #show_spectrum(y, yo, "Y")
-        #show_histogram(u, uo, "U", "U original")
+        show_histogram(u, uo, "U", "U original")
         #show_spectrum(u, uo, "U")
-        #show_histogram(v, vo, "V", "V Original")
+        show_histogram(v, vo, "V", "V Original")
         #show_spectrum(v, vo, "V")
 
-    #y = scipy.ndimage.median_filter(y, (3,3))
-    y = cv2.blur(y,(5,5))
-
-    rows, cols = v.shape
-    kernel_x = cv2.getGaussianKernel(cols, 1080/2)
-    kernel_y = cv2.getGaussianKernel(rows, 1080/2)
-    kernel = kernel_y * kernel_x.T
-    mask = 1-kernel / np.linalg.norm(kernel)
-    mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
-    if show_steps:
-        plt.imshow(mask)
-        plt.show()
-    y = cv2.multiply(y.astype(np.float64), 3/4+1/2*mask)
-    u = cv2.multiply(u.astype(np.float64), 1+0.01*mask)
-    v = cv2.multiply(v.astype(np.float64), 1+0.01*mask)
-    u = cv2.multiply(u,2.5)
-    u = cv2.subtract(u,190)
-    v = cv2.multiply(v,2.1)
-    v = cv2.subtract(v,140)
-
-    #u = scipy.ndimage.gaussian_filter(u,1.2)
-    #v = scipy.ndimage.gaussian_filter(v, 1.2)
+    y = scipy.ndimage.median_filter(y, (params["YfilterSize"],params["YfilterSize"]))
+    mask = getGaussian2D(y.shape,params["sigma"],show_steps)
+    y = cv2.multiply(y.astype(np.float64), (1-params["gausYAdj"]/2)+params["gausYAdj"]*mask)
+    u = cv2.multiply(u.astype(np.float64), 1+params["gausUVAdj"]*mask)
+    v = cv2.multiply(v.astype(np.float64), 1+params["gausUVAdj"]*mask)
+    u = cv2.subtract(u, params["Usubstract"])
+    u = cv2.multiply(u,params["Umultiply"])
+    v = cv2.subtract(v, params["Vsubstract"])
+    v = cv2.multiply(v,params["Vmultiply"])
     y = np.clip(y,0,255).astype(np.uint8)
     u = np.clip(u,0,255).astype(np.uint8)
     v = np.clip(v,0,255).astype(np.uint8)
     frame = cv2.merge((y, u, v))
-
     frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
     if show_steps:
         cv2.imwrite("output/YUV-edit_Frame.jpg",frame)
         show_histogram(y, yo, "Y edit", "Y Original")
-        #show_spectrum(y, yo, "Y")
         show_histogram(u, uo, "U edit", "U original")
-        #show_spectrum(u, uo, "U")
         show_histogram(v, vo, "V edit", "V Original")
-        #show_spectrum(v, vo, "V")
 
     # BGR modifier
     b, g, r = cv2.split(frame)
     bo, go, ro = cv2.split(frameOrig)
-
-    if show_steps:
-        show_histogram(r, ro, "Red", "Red Original")
-        show_spectrum(r, ro, "Red")
-        show_histogram(g, go, "Green", "Green Original")
-        show_spectrum(g, go, "Green")
-        show_histogram(b, bo, "Blue", "Blue Original")
-        show_spectrum(b, bo, "Blue")
-    """
-    fft_r = np.fft.fft2(r)
-    fft_r = np.fft.fftshift(fft_r)
-    fft_r_filter = fft_r * butterworth_filter(r.shape, 3, 400)
-    ifft_r = np.fft.ifftshift(fft_r_filter)
-    ifft_r = np.fft.ifft2(ifft_r)
-    r = ifft_r.real
-    fft_g = np.fft.fft2(g)
-    fft_g = np.fft.fftshift(fft_g)
-    fft_g_filter = fft_g * butterworth_filter(r.shape, 3, 400)
-    ifft_g = np.fft.ifftshift(fft_g_filter)
-    ifft_g = np.fft.ifft2(ifft_g)
-    g = ifft_g.real
-    fft_b = np.fft.fft2(b)
-    fft_b = np.fft.fftshift(fft_b)
-    fft_b_filter = fft_b * butterworth_filter(r.shape, 3, 400)
-    ifft_b = np.fft.ifftshift(fft_b_filter)
-    ifft_b = np.fft.ifft2(ifft_b)
-    b = ifft_b.real"""
-    if show_steps:
-        show_spectrum(r, ro, "Red")
-        show_spectrum(g, go, "Green")
-        show_spectrum(b, bo, "Blue")
-
-    #r = scipy.ndimage.gaussian_filter(r, 2)
-    #g = scipy.ndimage.gaussian_filter(g, 2.5)
-    #b = scipy.ndimage.gaussian_filter(b, 2)
-
     #r = cv2.multiply(r,0.80)
     #g = cv2.multiply(g,0.70)
     #b = cv2.multiply(b,0.6)
-
-    r = np.clip(r,0,255).astype(np.uint8)
-    g = np.clip(g, 0, 255).astype(np.uint8)
-    b = np.clip(b, 0, 255).astype(np.uint8)
-    frame = cv2.merge((b,g,r))
+    #r = np.clip(r,0,255).astype(np.uint8)
+    #g = np.clip(g, 0, 255).astype(np.uint8)
+    #b = np.clip(b, 0, 255).astype(np.uint8)
+    #frame = cv2.merge((b,g,r))
+    if show_steps:
+        cv2.imwrite("output/BGR-edit_frame.jpg",frame)
+        show_histogram(r, ro, "Red After", "Red Original")
+        show_histogram(g, go, "Green After", "Green Original")
+        show_histogram(b, bo, "Blue After", "Blue Original")
 
     #HSV modifiers
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
     hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
     ho, so, vo = cv2.split(hsvOrig)
-    
-    if show_steps:
-        cv2.imwrite("output/BGR-edit_frame.jpg",frame)
-        #show_histogram(h, ho, "Hue", "Hue Original")
-        #show_spectrum(h,ho,"Hue")
-        #show_histogram(v, vo, "Value", "Value Original")
-        #show_spectrum(v,vo,"Value")
-        #show_histogram(s, so, "Saturation", "Saturation Original")
-        #show_spectrum(s,so,"Saturation")
-
-    #h = scipy.ndimage.median_filter(h,(1,3))
-    #s = scipy.ndimage.median_filter(s, (5,5))
-    #v = scipy.ndimage.median_filter(v,(3,3))
 
     #h = cv2.multiply(h,0.99)
     #v = cv2.multiply(v, 0.90)
-    #s = cv2.multiply(s,1.75)
-    s = cv2.add(s, 20)
-
-    #s = scipy.ndimage.gaussian_filter(s, 4)
+    s = cv2.multiply(s,params["Smultiply"])
+    s = cv2.add(s, params["Sadd"])
     h = np.clip(h,0,255).astype(np.uint8)
     v = np.clip(v, 0, 255).astype(np.uint8)
     s = np.clip(s, 0, 255).astype(np.uint8)
@@ -153,13 +109,101 @@ def process_frame(frame, frameOrig,show_steps=False):
     frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
     
     if show_steps:
-        show_histogram(h, ho, "Hue", "Hue Original")
-        show_histogram(v, vo, "Value", "Value Original")
-        show_histogram(s, so, "Saturation", "Saturation Original")
+        show_histogram(h, ho, "Hue After", "Hue Original")
+        show_histogram(v, vo, "Value After", "Value Original")
+        show_histogram(s, so, "Saturation After", "Saturation Original")
 
-    return frame
+    if evaluate:
+        mae = cv2.mean(np.abs(cv2.subtract(frame, frameOrig)))
+        mse = cv2.mean(cv2.pow(cv2.subtract(frame, frameOrig), 2))
+        psnr = (10 * cv2.log(cv2.divide(255 ** 2, mse))).T[0]
+        print(f"MAE: B={mae[0]:.3f} G={mae[1]:.3f} R={mae[2]:.3f}\tMSE: B={mse[0]:.3f} G={mse[1]:.3f} R={mse[2]:.3f}\tPSNR: B={psnr[0]:.3f} G={psnr[1]:.3f} R={psnr[2]:.3f}")
+        return frame, list(mae[:3]), list(mse[:3]), list(psnr[:3])
+    return frame, [-1,-1,-1],[-1,-1,-1],[-1,-1,-1]
 
-def process_video(input_path,original, output_path, show_steps=False, show_processed_frame=True):
+def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, show_steps=False, evaluate=False,
+                  **kwargs) -> tuple[cv2.typing.MatLike, list[float], list[float], list[float]]:
+    """Verwerkt frame, mogelijke tweaks:
+        params = {"filterSize","sigma","gaus<x>Adj","<x>multiply","<x>substract","Sadd""Smultiply"}"""
+    params = {  # Standaardwaarden
+        "filterSize": 5,
+        "sigma": 1080 / 2,
+        "gausRAdj": 0.01,
+        "gausGAdj": 0.01,
+        "gausBAdj": 0.01,
+        "Rmultiply": 1,
+        "Rsubstract": 0,
+        "Gmultiply": 1,
+        "Gsubstract": 0,
+        "Bmultiply": 1,
+        "Bsubstract": 0,
+        "Sadd": 0,
+        "Smultiply": 1
+    }
+    params.update(kwargs)
+
+    # HSV modifiers
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
+    ho, so, vo = cv2.split(hsvOrig)
+
+    # h = cv2.multiply(h,0.99)
+    # v = cv2.multiply(v, 0.90)
+    s = cv2.multiply(s, params["Smultiply"])
+    s = cv2.add(s, params["Sadd"])
+    h = np.clip(h, 0, 255).astype(np.uint8)
+    v = np.clip(v, 0, 255).astype(np.uint8)
+    s = np.clip(s, 0, 255).astype(np.uint8)
+    final_hsv = cv2.merge((h, s, v))
+    frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
+    if show_steps:
+        show_histogram(h, ho, "Hue After", "Hue Original")
+        show_histogram(v, vo, "Value After", "Value Original")
+        show_histogram(s, so, "Saturation After", "Saturation Original")
+
+
+    # BGR modifier
+    b, g, r = cv2.split(frame)
+    bo, go, ro = cv2.split(frameOrig)
+    if show_steps:
+        cv2.imwrite("output/BGR-edit_frame.jpg", frame)
+        show_histogram(r, ro, "Red After", "Red Original")
+        show_histogram(g, go, "Green After", "Green Original")
+        show_histogram(b, bo, "Blue After", "Blue Original")
+
+    #y = scipy.ndimage.median_filter(y, (params["YfilterSize"], params["YfilterSize"]))
+    mask = getGaussian2D(r.shape, params["sigma"], show_steps)
+    r = cv2.multiply(r.astype(np.float64), 1 + params["gausRAdj"] * mask)
+    g = cv2.multiply(g.astype(np.float64), 1 + params["gausGAdj"] * mask)
+    b = cv2.multiply(b.astype(np.float64), 1 + params["gausBAdj"] * mask)
+    r = cv2.subtract(r, params["Rsubstract"])
+    r = cv2.multiply(r, params["Rmultiply"])
+    b = cv2.subtract(b, params["Bsubstract"])
+    b = cv2.multiply(b, params["Bmultiply"])
+    g = cv2.subtract(g, params["Gsubstract"])
+    g = cv2.multiply(g, params["Gmultiply"])
+
+    r = np.clip(r,0,255).astype(np.uint8)
+    g = np.clip(g, 0, 255).astype(np.uint8)
+    b = np.clip(b, 0, 255).astype(np.uint8)
+    frame = cv2.merge((b,g,r))
+    if show_steps:
+        cv2.imwrite("output/BGR-edit_frame.jpg", frame)
+        show_histogram(r, ro, "Red After", "Red Original")
+        show_histogram(g, go, "Green After", "Green Original")
+        show_histogram(b, bo, "Blue After", "Blue Original")
+
+    if evaluate:
+        mae = cv2.mean(np.abs(cv2.subtract(frame.astype(np.float64), frameOrig.astype(np.float64))))
+        mse = cv2.mean(cv2.pow(cv2.subtract(frame.astype(np.float64), frameOrig.astype(np.float64)), 2))
+        psnr = (10 * cv2.log(cv2.divide(255 ** 2, mse))).T[0]
+        print(
+            f"MAE: B={mae[0]:.3f} G={mae[1]:.3f} R={mae[2]:.3f}\tMSE: B={mse[0]:.3f} G={mse[1]:.3f} R={mse[2]:.3f}\tPSNR: B={psnr[0]:.3f} G={psnr[1]:.3f} R={psnr[2]:.3f}")
+        return frame, list(mae[:3]), list(mse[:3]), list(psnr[:3])
+    return frame, [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]
+
+def process_video(input_path:str,original:str, output_path:str, show_steps=False, evaluate=False, show_processed_frame=True):
     print("Processing "+input_path)
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -180,19 +224,17 @@ def process_video(input_path,original, output_path, show_steps=False, show_proce
         if not ret:
             break
 
-        frame = process_frame(frame,frameOrig,show_steps)
-        out.write(frame)
+        #frameOut, mae, mse, psnr = process_frame(frame, frameOrig, show_steps, evaluate, Umultiply=2.5, Usubstract=76)
+        frameOut, mae, mse, psnr = process_frame2(frame, frameOrig, show_steps, evaluate, Smultiply=1.5, Sadd=10,
+                                                  gausRAdj=0.25, gausGAdj=0, gausBAdj=0.1,
+                                                  Rsubstract=-5, Gsubstract=-5, Bsubstract=-5,
+                                                  Rmultiply=0.8, Gmultiply=0.8, Bmultiply=0.7,
+                                                  sigma=1080/2)
+        out.write(frameOut)
 
         if show_processed_frame:
-            cv2.imshow('Processing Video', frame)
-        if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
-            #evaluate frame
-            mae = cv2.mean(np.abs(cv2.subtract(frame,frameOrig)))
-            print(f"MAE: B={mae[0]} G={mae[1]} R={mae[2]}")
-            mse = cv2.mean(cv2.pow(cv2.subtract(frame,frameOrig),2))
-            print(f"MSE: B={mse[0]} G={mse[1]} R={mse[2]}")
-            psnr = 10* cv2.log(cv2.divide(255**2,mse))
-            print(f"PSNR: B={psnr[0][0]} G={psnr[1][0]} R={psnr[2][0]}")
+            cv2.imshow('Processing Video', frameOut)
+        if evaluate or show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     # Release everything
