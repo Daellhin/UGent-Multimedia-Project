@@ -122,25 +122,25 @@ def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_st
     return frame, [-1,-1,-1],[-1,-1,-1],[-1,-1,-1]
 
 def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, show_steps=False, evaluate=False,
-                  **kwargs) -> tuple[cv2.typing.MatLike, list[float], list[float], list[float]]:
+                   params=None) -> tuple[cv2.typing.MatLike, list[float], list[float], list[float]]:
     """Verwerkt frame, mogelijke tweaks:
         params = {"filterSize","sigma","gaus<x>Adj","<x>multiply","<x>substract","Sadd""Smultiply"}"""
-    params = {  # Standaardwaarden
-        "filterSize": 5,
-        "sigma": 1080 / 2,
-        "gausRAdj": 0.01,
-        "gausGAdj": 0.01,
-        "gausBAdj": 0.01,
-        "Rmultiply": 1,
-        "Rsubstract": 0,
-        "Gmultiply": 1,
-        "Gsubstract": 0,
-        "Bmultiply": 1,
-        "Bsubstract": 0,
-        "Sadd": 0,
-        "Smultiply": 1
-    }
-    params.update(kwargs)
+    if params is None:
+        params = {
+            "filterSize": 5,
+            "sigma": 1080 / 2,
+            "gausRAdj": 0.01,
+            "gausGAdj": 0.01,
+            "gausBAdj": 0.01,
+            "Rmultiply": 1,
+            "Rsubstract": 0,
+            "Gmultiply": 1,
+            "Gsubstract": 0,
+            "Bmultiply": 1,
+            "Bsubstract": 0,
+            "Sadd": 0,
+            "Smultiply": 1
+        }
 
     # HSV modifiers
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -203,7 +203,7 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
         return frame, list(mae[:3]), list(mse[:3]), list(psnr[:3])
     return frame, [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]
 
-def process_video(input_path:str,original:str, output_path:str, show_steps=False, evaluate=False, show_processed_frame=True):
+def process_video(input_path:str,original:str, output_path:str,color_params:dict, show_steps=False, evaluate=False, show_processed_frame=True,** kwargs):
     print("Processing "+input_path)
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -225,11 +225,7 @@ def process_video(input_path:str,original:str, output_path:str, show_steps=False
             break
 
         #frameOut, mae, mse, psnr = process_frame(frame, frameOrig, show_steps, evaluate, Umultiply=2.5, Usubstract=76)
-        frameOut, mae, mse, psnr = process_frame2(frame, frameOrig, show_steps, evaluate, Smultiply=1.5, Sadd=10,
-                                                  gausRAdj=0.25, gausGAdj=0, gausBAdj=0.1,
-                                                  Rsubstract=-5, Gsubstract=-5, Bsubstract=-5,
-                                                  Rmultiply=0.8, Gmultiply=0.8, Bmultiply=0.7,
-                                                  sigma=1080/2)
+        frameOut, mae, mse, psnr = process_frame2(frame, frameOrig, show_steps, evaluate, color_params)
         out.write(frameOut)
 
         if show_processed_frame:
@@ -255,12 +251,29 @@ def main():
     audio_clip.close()
     video_clip.close()"""
 
+    params = {  # Standaardwaarden
+        "filterSize": 5,
+        "sigma": 1080 / 2,
+        "gausRAdj": 0.25,
+        "gausGAdj": 0,
+        "gausBAdj": 0.1,
+        "Rmultiply": 0.8,
+        "Rsubstract": -5,
+        "Gmultiply": 0.8,
+        "Gsubstract": -5,
+        "Bmultiply": 0.7,
+        "Bsubstract": -5,
+        "Sadd": 10,
+        "Smultiply": 1.5
+    }
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4")
-    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4")
+                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",
+                  params,evaluate=True)
+    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  params, evaluate=True)
     #process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
     #              "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
     #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")
