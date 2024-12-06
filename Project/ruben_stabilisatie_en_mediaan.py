@@ -1,5 +1,6 @@
 import math
 import random
+from pydoc import importfile
 from signal import signal
 from scipy.optimize import minimize
 
@@ -11,6 +12,7 @@ from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
 from visualisations import *
+from utils import printProgressBar
 
 def create_gaussian_kernel(size=15, sigma=3):
     """Create a 2D Gaussian kernel."""
@@ -21,45 +23,6 @@ def create_gaussian_kernel(size=15, sigma=3):
     return kernel / kernel.sum()
 
 def process_frame(frame, frameOrig, show_steps=False):
-    # Wiener filter
-    def wiener_filter(img, kernel, k=0.01):
-        # Process each channel separately
-        restored_channels = []
-        for channel in cv2.split(img):
-            # Pad the kernel to match image size by placing it in the center
-            padded_kernel = np.zeros(channel.shape)
-            kh, kw = kernel.shape
-            center_y = padded_kernel.shape[0] // 2 - kh // 2
-            center_x = padded_kernel.shape[1] // 2 - kw // 2
-            padded_kernel[center_y: center_y + kh, center_x: center_x + kw] = kernel
-
-            # Convert to frequency domain
-            # H = np.fft.fft2(np.fft.ifftshift(padded_kernel))
-            H = np.fft.fft2(np.fft.fftshift(padded_kernel))
-            G = np.fft.fft2(channel.astype(float))
-
-            # Apply Wiener filter
-            H_conj = np.conj(H)
-            H_abs_sq = np.abs(H) ** 2
-            F = H_conj / (H_abs_sq + k) * G
-
-            # Convert back to spatial domain
-            restored = np.abs(np.fft.ifft2(F))
-
-            # Normalize to [0, 255] range
-            restored = (restored - restored.min()) * 255 / (restored.max() - restored.min())
-            restored_channels.append(restored.astype(np.uint8))
-
-        # Merge channels back together
-        restored_image = cv2.merge(restored_channels)
-
-        # show_results_old(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
-        # plot_image(cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
-        return restored_image
-
-    #frame = wiener_filter(frame, create_gaussian_kernel(sigma=1))
-
-
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
@@ -484,7 +447,10 @@ def process_frame(frame, frameOrig, show_steps=False):
         #frame = align_color_channels(frame)
 
         #frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
-        #frame = align_and_stabilize_frame(process_frame.frames[-1],frame)
+
+        if True:
+            frame = align_and_stabilize_frame(process_frame.frames[-1],frame)
+            frame, _ = stabiliseer_frames(process_frame.frames[-1],frame)
 
         process_frame.frames = process_frame.frames[1:] + [frame]
 
@@ -512,6 +478,12 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    total_iterations = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(fps)
+    print(total_iterations)
+    counter_iterations = 0
+    printProgressBar(counter_iterations,total_iterations)
+
     while cap.isOpened() and capOrig.isOpened():
         ret, frame = cap.read()
         ret, frameOrig = capOrig.read()
@@ -522,8 +494,10 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
         # Write the processed frame
         out.write(frame)
 
-        if show_processed_frame:
-            cv2.imshow('Processing Video', frame)
+        printProgressBar(counter_iterations, total_iterations)
+        counter_iterations += 1
+        #if show_processed_frame:
+        #    cv2.imshow('Processing Video', frame)
         if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
@@ -533,19 +507,19 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
     cv2.destroyAllWindows()
 
 def main():
-    """
+
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "output/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", False)
-
+    """
     process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",False)
-    """
+    
     process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
                   "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
                   "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")
-    """
+    
     process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
                   "../SourceVideos/Robin_Singing_video.mp4",
                   "output/Robin_Singing_video.mp4")
