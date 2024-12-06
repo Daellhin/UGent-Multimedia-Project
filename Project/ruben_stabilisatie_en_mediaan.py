@@ -13,6 +13,7 @@ from scipy.io import wavfile
 import moviepy
 from visualisations import *
 from utils import printProgressBar
+from numba import jit, cuda
 
 def create_gaussian_kernel(size=15, sigma=3):
     """Create a 2D Gaussian kernel."""
@@ -464,6 +465,7 @@ def process_frame(frame, frameOrig, show_steps=False):
 
     return frame
 
+@cuda.jit()
 def process_video(input_path, original, output_path, show_steps=False, show_processed_frame=True):
     # Open the video file
     cap = cv2.VideoCapture(input_path)
