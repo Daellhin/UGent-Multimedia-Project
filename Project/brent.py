@@ -125,7 +125,7 @@ def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_st
         mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
         psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
         ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
-        print("MSE=",mse, psnr, ssim)
+        #print("MSE=",mse," PSNR=", psnr," SSIM=", ssim)
         return frame, mse, psnr, ssim
     return frame, -1, -1, -1
 
@@ -211,9 +211,11 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
         mse = skimage.metrics.mean_squared_error(frameOrig, frame)  #naar 0!
         psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig,frame)
         ssim = skimage.metrics.structural_similarity(frameOrig,frame,channel_axis=-1) #naar 1!
-        print(mse,psnr,ssim)
+        #print(mse,psnr,ssim)
         return frame, mse, psnr, ssim
     return frame, -1,-1,-1
+
+
 
 def process_video(input_path:str,original:str, output_path:str,color_params:dict, show_steps=False, show_processed_frame=True):
     print("Processing "+input_path)
@@ -221,24 +223,32 @@ def process_video(input_path:str,original:str, output_path:str,color_params:dict
     cap = cv2.VideoCapture(input_path)
     capOrig = cv2.VideoCapture(original)
 
+
     # Get video properties
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     # Create VideoWriter object
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
     eval_frame = 0
+    mse_list = []
+    psnr_list = []
+    ssim_list = []
     while cap.isOpened() and capOrig.isOpened():
         ret, frame = cap.read()
         ret, frameOrig = capOrig.read()
         if not ret:
             break
 
-        frameOut, mse, psnr, ssim = process_frame(frame, frameOrig, show_steps, eval_frame == 20, color_params)
+        frameOut, mse, psnr, ssim = process_frame(frame, frameOrig, show_steps, True, color_params)
         #frameOut, mse, psnr, ssim = process_frame2(frame, frameOrig, show_steps, eval_frame==20, color_params)
+        mse_list.append(mse)
+        psnr_list.append(psnr)
+        ssim_list.append(ssim)
         out.write(frameOut)
         eval_frame+=1
 
@@ -246,7 +256,8 @@ def process_video(input_path:str,original:str, output_path:str,color_params:dict
             cv2.imshow('Processing Video', frameOut)
         if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
+    print(mse_list,psnr_list,ssim_list)
+    print("MSE=",np.mean(mse_list)," PSNR=",np.mean(psnr_list)," SSIM=",np.mean(ssim_list))
     # Release everything
     cap.release()
     out.release()
@@ -265,17 +276,6 @@ def main():
     audio_clip.close()
     video_clip.close()"""
 
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  {
-                      "Vmultiply": 2,
-                      "Sadd": 20, "Smultiply": 1,
-                      "filterSize": 3, "sigma": 1080,
-                      "gausYAdj": 10, "gausCrAdj": 2, "gausCbAdj": 3,
-                      "Crmultiply": 1.4, "Cbmultiply": 1.8, "Ymultiply": 0.8,
-                      "Crsubstract": 51, "Cbsubstract": 98, "Ysubstract": 0
-                  })
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "output/2017-01-07_President_Obama's_Weekly_Address.mp4",
