@@ -1,11 +1,12 @@
 import math
 import random
 from typing import Sequence
-
+import skimage
+from imageio.core import image_as_uint
+from skimage import *
 import cv2
 import numpy as np
 import scipy
-from PIL.ImageChops import multiply
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
@@ -24,57 +25,62 @@ def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
     return mask
 
 
-def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_steps=False,evaluate=False,** kwargs) -> tuple[cv2.typing.MatLike, list[float], list[float], list[float]]:
+def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_steps=False,evaluate=False, params=None) -> tuple[cv2.typing.MatLike, float, float, float]:
     """Verwerkt frame, mogelijke tweaks:
         params = {"YfilterSize": 5, "sigma": 1080/2,"gausUVAdj": 0.01,"gausYAdj": 0.5,"Umultiply": 2.5,"Usubstract": 75,"Vmultiply": 2.1,"Vsubstract": 70,"Sadd": 20,"Smultiply": 1}"""
-    params = {  # Standaardwaarden
-    "YfilterSize": 5,
-    "sigma": 1080 / 2,
-    "gausUVAdj": 0.01,
-    "gausYAdj": 0.5,
-    "Umultiply": 2.5,
-    "Usubstract": 75,
-    "Vmultiply": 2.1,
-    "Vsubstract": 70,
-    "Sadd": 20,
-    "Smultiply": 1
-    }
-    params.update(kwargs)
+    if params is None:
+        params = {
+            "filterSize": 5,
+            "sigma": 1080 / 2,
+            "gausYAdj": 0.01,
+            "gausCrAdj": 0.01,
+            "gausCbAdj": 0.01,
+            "Crmultiply": 1,
+            "Crsubstract": 0,
+            "Cbmultiply": 1,
+            "Cbsubstract": 0,
+            "Ymultiply": 1,
+            "Ysubstract": 0,
+            "Sadd": 0,
+            "Smultiply": 1,
+            "Vmultiply" : 1
+        }
 
     # YUV modifier - kringverzwakking
-    yuv = cv2.cvtColor(frame,cv2.COLOR_BGR2YUV)
-    y, u, v = cv2.split(yuv)
-    yuv_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YUV)
-    yo, uo, vo = cv2.split(yuv_or)
+    yrb = cv2.cvtColor(frame,cv2.COLOR_BGR2YCrCb)
+    y, cr, cb = cv2.split(yrb)
+    yrb_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YCrCb)
+    yo, cro, cbo = cv2.split(yrb_or)
 
     if show_steps:
         cv2.imwrite("output/start_Frame.jpg",frame)
         show_histogram(y, yo, "Y", "Y Original")
-        #show_spectrum(y, yo, "Y")
-        show_histogram(u, uo, "U", "U original")
-        #show_spectrum(u, uo, "U")
-        show_histogram(v, vo, "V", "V Original")
-        #show_spectrum(v, vo, "V")
+        show_histogram(cr, cro, "Cr", "Cr original")
+        show_histogram(cb, cbo, "Cb", "Cb Original")
 
-    y = scipy.ndimage.median_filter(y, (params["YfilterSize"],params["YfilterSize"]))
+    y = cv2.multiply(y, params["Ymultiply"])
+    cr = cv2.multiply(cr,params["Crmultiply"])
+    cb = cv2.multiply(cb, params["Cbmultiply"])
+
+    y = scipy.ndimage.median_filter(y, (params["filterSize"],params["filterSize"]))
     mask = getGaussian2D(y.shape,params["sigma"],show_steps)
-    y = cv2.multiply(y.astype(np.float64), (1-params["gausYAdj"]/2)+params["gausYAdj"]*mask)
-    u = cv2.multiply(u.astype(np.float64), 1+params["gausUVAdj"]*mask)
-    v = cv2.multiply(v.astype(np.float64), 1+params["gausUVAdj"]*mask)
-    u = cv2.subtract(u, params["Usubstract"])
-    u = cv2.multiply(u,params["Umultiply"])
-    v = cv2.subtract(v, params["Vsubstract"])
-    v = cv2.multiply(v,params["Vmultiply"])
+    y = cv2.add(y.astype(np.float64), params["gausYAdj"]*mask)
+    cr = cv2.add(cr.astype(np.float64), params["gausCrAdj"]*mask)
+    cb = cv2.add(cb.astype(np.float64), params["gausCbAdj"]*mask)
+    y = cv2.subtract(y, params["Ysubstract"])
+    cr = cv2.subtract(cr, params["Crsubstract"])
+    cb = cv2.subtract(cb, params["Cbsubstract"])
+
     y = np.clip(y,0,255).astype(np.uint8)
-    u = np.clip(u,0,255).astype(np.uint8)
-    v = np.clip(v,0,255).astype(np.uint8)
-    frame = cv2.merge((y, u, v))
-    frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
+    cr = np.clip(cr,0,255).astype(np.uint8)
+    cb = np.clip(cb,0,255).astype(np.uint8)
+    frame = cv2.merge((y, cr, cb))
+    frame = cv2.cvtColor(frame, cv2.COLOR_YCrCb2BGR)
     if show_steps:
         cv2.imwrite("output/YUV-edit_Frame.jpg",frame)
         show_histogram(y, yo, "Y edit", "Y Original")
-        show_histogram(u, uo, "U edit", "U original")
-        show_histogram(v, vo, "V edit", "V Original")
+        show_histogram(cr, cro, "Cr edit", "Cr original")
+        show_histogram(cb, cbo, "Cb edit", "Cb Original")
 
     # BGR modifier
     b, g, r = cv2.split(frame)
@@ -114,15 +120,17 @@ def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_st
         show_histogram(s, so, "Saturation After", "Saturation Original")
 
     if evaluate:
-        mae = cv2.mean(np.abs(cv2.subtract(frame, frameOrig)))
-        mse = cv2.mean(cv2.pow(cv2.subtract(frame, frameOrig), 2))
-        psnr = (10 * cv2.log(cv2.divide(255 ** 2, mse))).T[0]
-        print(f"MAE: B={mae[0]:.3f} G={mae[1]:.3f} R={mae[2]:.3f}\tMSE: B={mse[0]:.3f} G={mse[1]:.3f} R={mse[2]:.3f}\tPSNR: B={psnr[0]:.3f} G={psnr[1]:.3f} R={psnr[2]:.3f}")
-        return frame, list(mae[:3]), list(mse[:3]), list(psnr[:3])
-    return frame, [-1,-1,-1],[-1,-1,-1],[-1,-1,-1]
+        cv2.imwrite("output/evaluate_frame.jpg", frame)
+        cv2.imwrite("output/original_frame.jpg", frameOrig)
+        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
+        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
+        ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
+        print("MSE=",mse, psnr, ssim)
+        return frame, mse, psnr, ssim
+    return frame, -1, -1, -1
 
 def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, show_steps=False, evaluate=False,
-                   params=None) -> tuple[cv2.typing.MatLike, list[float], list[float], list[float]]:
+                   params=None) -> tuple[cv2.typing.MatLike, float, float, float]:
     """Verwerkt frame, mogelijke tweaks:
         params = {"filterSize","sigma","gaus<x>Adj","<x>multiply","<x>substract","Sadd""Smultiply"}"""
     if params is None:
@@ -139,8 +147,10 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
             "Bmultiply": 1,
             "Bsubstract": 0,
             "Sadd": 0,
-            "Smultiply": 1
+            "Smultiply": 1,
+            "Vmultiply" : 1
         }
+    frame = cv2.blur(frame,(5,5))
 
     # HSV modifiers
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -149,7 +159,7 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
     ho, so, vo = cv2.split(hsvOrig)
 
     # h = cv2.multiply(h,0.99)
-    # v = cv2.multiply(v, 0.90)
+    v = cv2.multiply(v, params["Vmultiply"])
     s = cv2.multiply(s, params["Smultiply"])
     s = cv2.add(s, params["Sadd"])
     h = np.clip(h, 0, 255).astype(np.uint8)
@@ -167,16 +177,19 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
     b, g, r = cv2.split(frame)
     bo, go, ro = cv2.split(frameOrig)
     if show_steps:
-        cv2.imwrite("output/BGR-edit_frame.jpg", frame)
+        cv2.imwrite("output/HSV-edit_frame.jpg", frame)
         show_histogram(r, ro, "Red After", "Red Original")
         show_histogram(g, go, "Green After", "Green Original")
         show_histogram(b, bo, "Blue After", "Blue Original")
 
     #y = scipy.ndimage.median_filter(y, (params["YfilterSize"], params["YfilterSize"]))
     mask = getGaussian2D(r.shape, params["sigma"], show_steps)
-    r = cv2.multiply(r.astype(np.float64), 1 + params["gausRAdj"] * mask)
-    g = cv2.multiply(g.astype(np.float64), 1 + params["gausGAdj"] * mask)
-    b = cv2.multiply(b.astype(np.float64), 1 + params["gausBAdj"] * mask)
+    r = cv2.add(r.astype(np.float64),params['gausRAdj']*mask)
+    g = cv2.add(g.astype(np.float64), params['gausGAdj'] * mask)
+    b = cv2.add(b.astype(np.float64), params['gausBAdj'] * mask)
+    #r = cv2.multiply(r.astype(np.float64), 1 + params["gausRAdj"] * mask)
+    #g = cv2.multiply(g.astype(np.float64), 1 + params["gausGAdj"] * mask)
+    #b = cv2.multiply(b.astype(np.float64), 1 + params["gausBAdj"] * mask)
     r = cv2.subtract(r, params["Rsubstract"])
     r = cv2.multiply(r, params["Rmultiply"])
     b = cv2.subtract(b, params["Bsubstract"])
@@ -189,21 +202,20 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
     b = np.clip(b, 0, 255).astype(np.uint8)
     frame = cv2.merge((b,g,r))
     if show_steps:
-        cv2.imwrite("output/BGR-edit_frame.jpg", frame)
         show_histogram(r, ro, "Red After", "Red Original")
         show_histogram(g, go, "Green After", "Green Original")
         show_histogram(b, bo, "Blue After", "Blue Original")
 
     if evaluate:
-        mae = cv2.mean(np.abs(cv2.subtract(frame.astype(np.float64), frameOrig.astype(np.float64))))
-        mse = cv2.mean(cv2.pow(cv2.subtract(frame.astype(np.float64), frameOrig.astype(np.float64)), 2))
-        psnr = (10 * cv2.log(cv2.divide(255 ** 2, mse))).T[0]
-        print(
-            f"MAE: B={mae[0]:.3f} G={mae[1]:.3f} R={mae[2]:.3f}\tMSE: B={mse[0]:.3f} G={mse[1]:.3f} R={mse[2]:.3f}\tPSNR: B={psnr[0]:.3f} G={psnr[1]:.3f} R={psnr[2]:.3f}")
-        return frame, list(mae[:3]), list(mse[:3]), list(psnr[:3])
-    return frame, [-1, -1, -1], [-1, -1, -1], [-1, -1, -1]
+        cv2.imwrite("output/evaluate_frame.jpg", frame)
+        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  #naar 0!
+        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig,frame)
+        ssim = skimage.metrics.structural_similarity(frameOrig,frame,channel_axis=-1) #naar 1!
+        print(mse,psnr,ssim)
+        return frame, mse, psnr, ssim
+    return frame, -1,-1,-1
 
-def process_video(input_path:str,original:str, output_path:str,color_params:dict, show_steps=False, evaluate=False, show_processed_frame=True,** kwargs):
+def process_video(input_path:str,original:str, output_path:str,color_params:dict, show_steps=False, show_processed_frame=True):
     print("Processing "+input_path)
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -218,19 +230,21 @@ def process_video(input_path:str,original:str, output_path:str,color_params:dict
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    eval_frame = 0
     while cap.isOpened() and capOrig.isOpened():
         ret, frame = cap.read()
         ret, frameOrig = capOrig.read()
         if not ret:
             break
 
-        #frameOut, mae, mse, psnr = process_frame(frame, frameOrig, show_steps, evaluate, Umultiply=2.5, Usubstract=76)
-        frameOut, mae, mse, psnr = process_frame2(frame, frameOrig, show_steps, evaluate, color_params)
+        frameOut, mse, psnr, ssim = process_frame(frame, frameOrig, show_steps, eval_frame == 20, color_params)
+        #frameOut, mse, psnr, ssim = process_frame2(frame, frameOrig, show_steps, eval_frame==20, color_params)
         out.write(frameOut)
+        eval_frame+=1
 
         if show_processed_frame:
             cv2.imshow('Processing Video', frameOut)
-        if evaluate or show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
+        if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     # Release everything
@@ -251,38 +265,64 @@ def main():
     audio_clip.close()
     video_clip.close()"""
 
-    params = {  # Standaardwaarden
-        "filterSize": 5,
-        "sigma": 1080 / 2,
-        "gausRAdj": 0.25,
-        "gausGAdj": 0,
-        "gausBAdj": 0.1,
-        "Rmultiply": 0.8,
-        "Rsubstract": -5,
-        "Gmultiply": 0.8,
-        "Gsubstract": -5,
-        "Bmultiply": 0.7,
-        "Bsubstract": -5,
-        "Sadd": 10,
-        "Smultiply": 1.5
-    }
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "output/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  params,evaluate=True)
-    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  params, evaluate=True)
+                  {
+                      "Vmultiply": 2,
+                      "Sadd": 20, "Smultiply": 1,
+                      "filterSize": 3, "sigma": 1080,
+                      "gausYAdj": 10, "gausCrAdj": 2, "gausCbAdj": 3,
+                      "Crmultiply": 1.4, "Cbmultiply": 1.8, "Ymultiply": 0.8,
+                      "Crsubstract": 51, "Cbsubstract": 98, "Ysubstract": 0
+                  })
+    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+                  "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
+                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",
+                  {
+                      "Vmultiply": 1.5,
+                      "Sadd": 20, "Smultiply": 1,
+                      "filterSize": 3, "sigma": 1080,
+                      "gausYAdj": 10, "gausCrAdj": 2, "gausCbAdj": 3,
+                      "Crmultiply": 1.4, "Cbmultiply": 1.4, "Ymultiply": 0.6,
+                      "Crsubstract": 51, "Cbsubstract": 50, "Ysubstract": -10
+                  })
+
+    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+     #             "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+     #             "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+     #             {
+     #                 "Vmultiply": 1,
+     #                 "Sadd": 20, "Smultiply": 1.5,
+     #                 "filterSize": 5, "sigma": 1080 / 2,
+     #                 "gausRAdj": -0.3, "gausGAdj": 0.1, "gausBAdj": -0.8,
+     #                 "Rmultiply": 0.8, "Gmultiply": 0.8, "Bmultiply": 0.7,
+     #                 "Rsubstract": -20, "Gsubstract": -30, "Bsubstract": -20
+     #             })
+
+    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #              {
+    #                  "Vmultiply": 0.75,
+    #                  "Sadd": 20, "Smultiply": 1.5,
+    #                  "filterSize": 5, "sigma": 1080 / 2,
+    #                  "gausRAdj": -0.3, "gausGAdj": 0.1, "gausBAdj": -0.8,
+    #                  "Rmultiply": 0.8, "Gmultiply": 0.8, "Bmultiply": 0.7,
+    #                  "Rsubstract": -20, "Gsubstract": -30, "Bsubstract": -20
+    #              })
     #process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
     #              "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")
+    #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #              params)
     #process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
     #              "../SourceVideos/Robin_Singing_video.mp4",
-    #              "output/Robin_Singing_video.mp4")
+    #              "output/Robin_Singing_video.mp4",
+    #              params)
     #process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
     #              "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #              "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4")
+    #              "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #              params)
     #process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
     #              "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
     #              "output/Apollo_11_Landing_-_first_steps_on_the_moon.mp4")
