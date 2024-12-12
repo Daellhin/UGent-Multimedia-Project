@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from functools import reduce
 from math import *
 from statistics import *
 from typing import Callable, Literal
@@ -16,14 +18,39 @@ from scipy.interpolate import interp1d
 from scipy.io import wavfile
 from utils import *
 from visualisations import *
+import time
+from concurrent.futures import ThreadPoolExecutor
+import os
 
 show_images = True
+
+
+@dataclass
+class NotchFilter:
+    frequency: int
+    Q: float
+    order: int
+
+
+@dataclass
+class ButterworthFilters:
+    type: Literal["lowpass", "highpass"]
+    cuttof: int
+    order: int
+
+
+@dataclass
+class ReduceNoiseFilters:
+    stationary: bool
+    n_fft: int
+    strength: float
 
 
 def sterio_notch_filter(
     stereo_audio: list[list[float]], fs: int, frequency: float, Q: float = 30.0, order=1
 ):
     """
+    Removes a specific frequency using IIR notch filter
     Q: Quality factor (higher Q = narrower notch)
     order: Filter order (higher = sharper cutoff)
     """
@@ -38,12 +65,15 @@ def sterio_notch_filter(
 
 
 def stereo_butterworth_filter(
-    type: Literal["lowpass", "highpass"],
     stereo_audio: list[list[float]],
     fs: int,
+    type: Literal["lowpass", "highpass"],
     cutoff: float,
     order=5,
 ):
+    """
+    Removes high or low frequencies using butterworth filter
+    """
     left_channel, right_channel = stereo_to_mono(stereo_audio)
 
     nyquist = 0.5 * fs
@@ -88,6 +118,9 @@ def stereo_spectral_noise_estimation_filter(
     noise_estimation_time=0.01,
     kernel_size=(1, 15),
 ):
+    """
+    Reduce noise using spectral gating, own implementation. Less succesful than noisereduce
+    """
     left_channel, right_channel = stereo_to_mono(stereo_audio)
 
     filtered_left = mono_spectral_noise_filter(
@@ -101,6 +134,9 @@ def stereo_spectral_noise_estimation_filter(
 
 
 def stereo_wiener_filter(audio_samples: list[list[float]], mysize=15):
+    """
+    Reduce noise using wiener filter. Not succesful!
+    """
     left_channel, right_channel = stereo_to_mono(audio_samples)
 
     filtered_left = signal.wiener(left_channel, mysize=mysize)
@@ -110,47 +146,76 @@ def stereo_wiener_filter(audio_samples: list[list[float]], mysize=15):
     return filtered_audio
 
 
-def create_audio_clip(samples: list[list[float]], fps: int):
-    def make_frame(t: float):
-        return np.array(samples)
-
-    return AudioClip(make_frame, duration=len(samples) / fps)
-
-
 def stereo_reduce_noise_filter(
     audio_samples: list[list[float]],
     fs: int,
     stationary=False,
     n_fft=1024,
+    use_tqdm=False,
+    strength=1.0,
 ):
     """
     Reduce noise using spectral gating with noise reduce
     """
     left_channel, right_channel = stereo_to_mono(audio_samples)
+
     filtered_left = nr.reduce_noise(
-        left_channel, fs, stationary=stationary, n_fft=n_fft, use_tqdm=True
+        left_channel, fs, stationary,  prop_decrease=strength, n_fft=n_fft, use_tqdm=use_tqdm
     )
     filtered_right = nr.reduce_noise(
-        right_channel, fs, stationary=stationary, n_fft=n_fft, use_tqdm=True
+        right_channel, fs, stationary, prop_decrease=strength, n_fft=n_fft, use_tqdm=use_tqdm
     )
+
     return mono_to_stereo(filtered_left, filtered_right)
 
-def apply_audio_filters(
-    audio_samples: list[list[float]], fs: int, filter_size: int = 5
-) -> list[list[float]]:
-    filtered_audio_1 = sterio_notch_filter(audio_samples, fs, 100, 1, 2)
-    filtered_audio_2 = stereo_butterworth_filter(
-        "lowpass", filtered_audio_1, fs, 5500, 5
-    )
-    filtered_audio_3 = stereo_reduce_noise_filter(filtered_audio_2, fs)
+def amplify_audio(audio_channel: list[float], amplification_factor: float):
+    return [sample * amplification_factor for sample in audio_channel]
 
-    show_stereo_spectrograms(
-        [audio_samples, filtered_audio_1, filtered_audio_2, filtered_audio_3],
-        fs,
-        "Noise reduction Spectogram",
-        end_time=5,
-        log_scale=False,
+def sterio_amplifie_audio(
+    audio_samples: list[list[float]], amplification_factor: float
+):
+    left_channel, right_channel = stereo_to_mono(audio_samples)
+
+    adjusted_data_left = amplify_audio(left_channel, amplification_factor)
+    adjusted_data_right = amplify_audio(right_channel, amplification_factor)
+
+    return mono_to_stereo(adjusted_data_left, adjusted_data_right)
+
+
+def apply_audio_filters(
+    audio_samples: list[list[float]],
+    fs: int,
+    notch_filters: list[NotchFilter] = [],
+    butterworth_filters: list[ButterworthFilters] = [],
+    reduce_noise_filters: list[ReduceNoiseFilters] = [],
+    amplification_factor=1.0,
+    debug=False,
+) -> list[list[float]]:
+    filtered_audio_1 = reduce(
+        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.order, f.Q),
+        notch_filters,
+        audio_samples,
     )
+    filtered_audio_2 = reduce(
+        lambda x, f: stereo_butterworth_filter(x, fs, f.type, f.cuttof, f.order),
+        butterworth_filters,
+        filtered_audio_1,
+    )
+    filtered_audio_3 = reduce(
+        lambda x, f: stereo_reduce_noise_filter(x, fs, f.stationary, f.n_fft, True, f.strength),
+        reduce_noise_filters,
+        filtered_audio_2,
+    )
+    filtered_audio_3 = sterio_amplifie_audio(filtered_audio_3, amplification_factor)
+
+    if debug:
+        show_stereo_spectrograms(
+            [audio_samples, filtered_audio_1, filtered_audio_2, filtered_audio_3],
+            fs,
+            "Noise reduction Spectogram",
+            end_time=5,
+            log_scale=False,
+        )
 
     return filtered_audio_3
 
@@ -182,40 +247,53 @@ def process_frame(
     return frame
 
 
-def process_video(input_path: str, output_path: str):
-    print("Processing: ", input_path)
+def process_video(
+    input_path: str,
+    output_path="output/output.mp4",
+    notch_filters: list[NotchFilter] = [],
+    butterworth_filters: list[ButterworthFilters] = [],
+    reduce_noise_filters: list = [],
+    amplification_factor=1.0,
+    debug=False,
+):
+    print("-- Processing: ", input_path)
 
-    video = VideoFileClip(input_path)
     # -- Video processing --
+    video = VideoFileClip(input_path)
     print(f"Processing video (s={video.duration})")
-    # frame_duration = 1 / video.fps  # frame duration in seconds
-    # processed_video: VideoFileClip = video.fl(
-    #     lambda gf, t: process_frame(gf, t, frame_duration)
-    # )
-    # cv2.destroyAllWindows()
-    # processed_video = video  # for debuging audio without video
+    processed_video = video
 
     # -- Audio processing --
     # Load audio
-    fs = video.audio.fps
-    print(f"Loading audio frames (fs={fs}) (s={video.audio.duration})")
-    audio_samples: list[list[float]] = list(video.audio.to_soundarray())
+    audio = video.audio
+    fs = audio.fps
+    print(f"Loading audio frames (fs={fs}) (s={audio.duration})")
+    audio_samples: list[list[float]] = list(audio.to_soundarray())
 
     # Process audio
     print(f"Applying audio filters")
-    processed_audio = apply_audio_filters(audio_samples, fs)
+    processed_audio = apply_audio_filters(
+        audio_samples,
+        fs,
+        notch_filters,
+        butterworth_filters,
+        reduce_noise_filters,
+        amplification_factor,
+        debug,
+    )
 
     # Audio output
     audio_path = f"{output_path}.wav"
     print(f"Writing audio to:", audio_path)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
-    
-    # t = AudioFileClip("output/output.mp4.wav")
-    # result: VideoFileClip = processed_video.set_audio(t)
-    # #play_stereo_audio(processed_audio)
 
-    # # -- Output results --
-    # result.write_videofile(output_path)
+    # -- Combine video and audio --
+    t = AudioFileClip(audio_path)
+    result: VideoFileClip = processed_video.with_audio(t)
+
+    # -- Output results --
+    result.write_videofile(output_path)
 
 
 def compair_audio(original_path: str, filtered_path: str):
@@ -227,13 +305,95 @@ def compair_audio(original_path: str, filtered_path: str):
 
 
 def main():
+    start_time = time.time()
+    debug = False
+    # -- Degraded videos --
     process_video(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-        "output/output.mp4",
+        "output/output_obama.mp4",
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        amplification_factor=2.0,
+        debug=debug,
     )
-    
-    # compair_audio("output/original.mp4.wav", "output/input.mp4.wav")
-    # compair_audio("output/original.mp4.wav", "output/output.mp4.wav")
+    process_video(
+        "DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+        "output/output_yellowthroat.mp4",
+        notch_filters=[NotchFilter(100, 1, 2)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*4, 1)],
+        amplification_factor=1.5,
+        debug=debug,
+    )
+    process_video(
+        "DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+        "output/output_arts_florissants.mp4",
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 10000, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(True, 2048*4, 1)],
+        amplification_factor=2.0,
+        debug=debug,
+    )
+    process_video(
+        "DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+        "output/output_heartbeat.mp4",
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*4, 1)],
+        amplification_factor=1.0,
+        debug=debug,
+    )
+    process_video(
+        "DegradedVideos/archive_Robin_Singing_video.mp4",
+        "output/output_robin.mp4",
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*4, 1)],
+        amplification_factor=1.0,
+        debug=debug,
+    )
+
+    # -- Archive videos --
+    process_video(
+        "ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+        "output/output_apollo.mp4",
+        notch_filters=[NotchFilter(190, 1, 2), NotchFilter(110, 1, 2), NotchFilter(50, 1, 2)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*2, 1)],
+        amplification_factor=1.0,
+        debug=debug,
+    )
+    process_video(
+        "ArchiveVideos/Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+        "output/output_tiffany.mp4",
+        debug=debug,
+    )
+    process_video(
+        "ArchiveVideos/Edison_speech,_1920s.mp4",
+        "output/output_edison.mp4",
+        notch_filters=[NotchFilter(100, 1, 1)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5000, 7)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        amplification_factor=1.0,
+        debug=debug,
+    )
+    process_video(
+        "ArchiveVideos/President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+        "output/output_kennedy.mp4",
+        notch_filters=[NotchFilter(50, 1, 1)],
+        debug=debug,
+    )
+    process_video(
+        "ArchiveVideos/The_Dream_of_Kings.mp4",
+        "output/output_king.mp4",
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 7)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        amplification_factor=2.0,
+        debug=debug,
+    )
+
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f"Video processing completed in {execution_time:.2f} seconds")
 
 
 if __name__ == "__main__":
