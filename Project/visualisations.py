@@ -1,9 +1,12 @@
+import math
+
+import cv2
 import matplotlib.ticker as mticker
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import signal
 from utils import *
-import cv2
+
 
 def show_stereo_spectrograms(
     stereo_audios: list[list[list[float]]],
@@ -17,6 +20,10 @@ def show_stereo_spectrograms(
     fig, axes = plt.subplots(len(stereo_audios), 2, figsize=(15, 6))
     fig.canvas.manager.set_window_title(title)
 
+    # Convert axes to 2D array if single row
+    if len(stereo_audios) == 1:
+        axes = np.array([axes])
+
     for i, (row) in enumerate(axes):
         start_index = int(start_time * fs)
         end_index = (
@@ -28,7 +35,7 @@ def show_stereo_spectrograms(
         f_left, t_left, Sxx_left = signal.spectrogram(np.array(left_channel), fs)
         f_right, t_right, Sxx_right = signal.spectrogram(np.array(right_channel), fs)
 
-        row[0].pcolormesh(t_left, f_left, 10 * np.log10(Sxx_left), cmap=colour_map)
+        row[0].pcolormesh(t_left, f_left, 10 * np.log10(Sxx_left))
         row[0].set_title(f"Left Channel Spectrogram {i}")
         row[0].set_ylabel("Frequency [Hz]")
         row[0].set_xlabel("Time [sec]")
@@ -37,7 +44,7 @@ def show_stereo_spectrograms(
             row[0].set_ylim([20, fs / 2])
             row[0].yaxis.set_major_formatter(mticker.ScalarFormatter())
 
-        row[1].pcolormesh(t_right, f_right, 10 * np.log10(Sxx_right), cmap=colour_map)
+        row[1].pcolormesh(t_right, f_right, 10 * np.log10(Sxx_right))
         row[1].set_title(f"Right Channel Spectrogram {i}")
         row[1].set_ylabel("Frequency [Hz]")
         row[1].set_xlabel("Time [sec]")
@@ -48,6 +55,7 @@ def show_stereo_spectrograms(
 
     plt.tight_layout()
     plt.show()
+
 
 def cumulative_histogram(image):
     hist = cv2.calcHist([image], [0], None, [256], [0, 256])
@@ -83,7 +91,7 @@ def show_histogram(image, image2, nameImg="", nameImg2=""):
 def magnitude_spectrum(fshift):
     magnitude_spectrum = np.log(np.abs(fshift) + 1)
     magnitude_spectrum -= np.min(magnitude_spectrum)
-    magnitude_spectrum *= 255. / np.max(magnitude_spectrum)
+    magnitude_spectrum *= 255.0 / np.max(magnitude_spectrum)
     return magnitude_spectrum
 
 
@@ -106,9 +114,30 @@ def show_spectrum(image, original_image, figure_name):
     ax2.imshow(magnitude_spectrum(fft_image), cmap="gray")
     ax3.imshow(magnitude_spectrum(fft_original), cmap="gray")
     ax4.imshow(original_image, cmap="gray")
-    ax1.axis('off')
-    ax2.axis('off')
-    ax3.axis('off')
-    ax4.axis('off')
+    ax1.axis("off")
+    ax2.axis("off")
+    ax3.axis("off")
+    ax4.axis("off")
     plt.tight_layout()
+    plt.show()
+
+
+def plot_butterworth_filter(
+    b: list[float], a: list[float], fs: int, cutoff: int, order: int
+):
+    # Generate frequency response
+    w, h = signal.freqz(b, a)
+    freq = w * fs / (2 * math.pi)
+
+    # Plot frequency response
+    plt.figure(figsize=(10, 4))
+    plt.plot(freq, 20 * np.log10(abs(h)))
+    plt.grid(True)
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Amplitude [dB]")
+    plt.title(
+        f"Butterworth Lowpass Filter Frequency Response\nCutoff: {cutoff}Hz, Order: {order}"
+    )
+    plt.axvline(cutoff, color="red", alpha=0.5)
+    plt.axhline(-3, color="green", alpha=0.5)
     plt.show()
