@@ -11,6 +11,8 @@ from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
 from visualisations import *
+from brent2 import process_frame as pf
+from brent2 import ColorParams
 
 def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
     rows, cols = shape
@@ -24,10 +26,8 @@ def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
         plt.show()
     return mask
 
-
+"""
 def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_steps=False,evaluate=False, params=None) -> tuple[cv2.typing.MatLike, float, float, float]:
-    """Verwerkt frame, mogelijke tweaks:
-        params = {"YfilterSize": 5, "sigma": 1080/2,"gausUVAdj": 0.01,"gausYAdj": 0.5,"Umultiply": 2.5,"Usubstract": 75,"Vmultiply": 2.1,"Vsubstract": 70,"Sadd": 20,"Smultiply": 1}"""
     if params is None:
         params = {
             "filterSize": 5,
@@ -131,8 +131,6 @@ def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_st
 
 def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, show_steps=False, evaluate=False,
                    params=None) -> tuple[cv2.typing.MatLike, float, float, float]:
-    """Verwerkt frame, mogelijke tweaks:
-        params = {"filterSize","sigma","gaus<x>Adj","<x>multiply","<x>substract","Sadd""Smultiply"}"""
     if params is None:
         params = {
             "filterSize": 5,
@@ -214,10 +212,56 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
         #print(mse,psnr,ssim)
         return frame, mse, psnr, ssim
     return frame, -1,-1,-1
+"""
 
 
+def optimaliseer_kleuren(frame):
+    # Splits de afbeelding in BGR-kanalen
+    b, g, r = cv2.split(frame)
 
-def process_video(input_path:str,original:str, output_path:str,color_params:dict, show_steps=False, show_processed_frame=True):
+    # Definieer het centrum van de afbeelding (assumeer centraal)
+    height, width = g.shape
+    center_x, center_y = width // 2, height // 2
+
+    def radial_shift_map(shape, scale_factor, power=1.0):
+        """Maak een verschuivingskaart op basis van een radiale functie."""
+        h, w = shape
+        y, x = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        dx = x - center_x
+        dy = y - center_y
+        r = np.sqrt(dx ** 2 + dy ** 2) + 1e-8  # Voeg kleine waarde toe om deling door 0 te vermijden
+        # Bereken de verschuiving
+        shift_x = scale_factor * (dx / r) * (r ** power)
+        shift_y = scale_factor * (dy / r) * (r ** power)
+        return shift_x, shift_y
+
+    # Corrigeer een kanaal
+    def apply_radial_shift(channel, shift_x, shift_y):
+        """Pas de verschuivingen toe op een kleurkanaal."""
+        map_x, map_y = np.meshgrid(np.arange(channel.shape[1]), np.arange(channel.shape[0]))
+        map_x = (map_x - shift_x).astype(np.float32)
+        map_y = (map_y - shift_y).astype(np.float32)
+        corrected = cv2.remap(channel, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        return corrected
+
+    # Parameters voor verschuivingen
+    scale_factor_red = 0.003  # Pas aan op basis van quiver-plot of experimenten
+    scale_factor_blue = -0.001
+
+    # Bereken verschuivingskaarten voor rode en blauwe kanalen
+    shift_x_r, shift_y_r = radial_shift_map(g.shape, scale_factor_red)
+    shift_x_b, shift_y_b = radial_shift_map(g.shape, scale_factor_blue)
+
+    # Corrigeer de rode en blauwe kanalen
+    aligned_r = apply_radial_shift(r, shift_x_r, shift_y_r)
+    aligned_b = apply_radial_shift(b, shift_x_b, shift_y_b)
+
+    # Combineer de gecorrigeerde kanalen
+    aligned_image = cv2.merge((aligned_b, g, aligned_r))
+
+    return aligned_image
+
+def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, show_steps=False, show_processed_frame=True):
     print("Processing "+input_path)
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -244,8 +288,8 @@ def process_video(input_path:str,original:str, output_path:str,color_params:dict
         if not ret:
             break
 
-        frameOut, mse, psnr, ssim = process_frame(frame, frameOrig, show_steps, True, color_params)
-        #frameOut, mse, psnr, ssim = process_frame2(frame, frameOrig, show_steps, eval_frame==20, color_params)
+        frame = optimaliseer_kleuren(frame)
+        frameOut, mse, psnr, ssim = pf(frame, frameOrig,color_params, show_steps, True)
         mse_list.append(mse)
         psnr_list.append(psnr)
         ssim_list.append(ssim)
@@ -276,17 +320,10 @@ def main():
     audio_clip.close()
     video_clip.close()"""
 
+    defaults = ColorParams()
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  {
-                      "Vmultiply": 1.5,
-                      "Sadd": 20, "Smultiply": 1,
-                      "filterSize": 3, "sigma": 1080,
-                      "gausYAdj": 10, "gausCrAdj": 2, "gausCbAdj": 3,
-                      "Crmultiply": 1.4, "Cbmultiply": 1.4, "Ymultiply": 0.6,
-                      "Crsubstract": 51, "Cbsubstract": 50, "Ysubstract": -10
-                  })
+                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",defaults)
 
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
      #             "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
