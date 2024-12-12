@@ -192,7 +192,7 @@ def apply_audio_filters(
     debug=False,
 ) -> list[list[float]]:
     filtered_audio_1 = reduce(
-        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.order, f.Q),
+        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.Q, f.order),
         notch_filters,
         audio_samples,
     )
