@@ -136,6 +136,7 @@ def process_frame(frame, frameOrig, show_steps=False):
         show_histogram(v, vo, "Value", "Value Original")
         show_histogram(s, so, "Saturation", "Saturation Original")
 
+
     def remove_black_borders_crop(aligned_img):
         # Zoek de eerste niet-zwarte rijen en kolommen
         non_black_rows = np.any(aligned_img != 0, axis=1)
@@ -433,6 +434,55 @@ def process_frame(frame, frameOrig, show_steps=False):
 
         return aligned_and_stabilized
 
+    def optimaliseer_kleuren(frame):
+        # Splits de afbeelding in BGR-kanalen
+        b, g, r = cv2.split(frame)
+
+        # Definieer het centrum van de afbeelding (assumeer centraal)
+        height, width = g.shape
+        center_x, center_y = width // 2, height // 2
+
+        # Functie om radiale verschuiving te berekenen
+        def radial_shift_map(shape, scale_factor, power=1.0):
+            """Maak een verschuivingskaart op basis van een radiale functie."""
+            h, w = shape
+            y, x = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+            dx = x - center_x
+            dy = y - center_y
+            r = np.sqrt(dx * 2 + dy * 2)  # Radiale afstand
+            # Bereken de verschuiving
+            shift_x = scale_factor * (dx / r) * (r ** power)
+            shift_y = scale_factor * (dy / r) * (r ** power)
+            shift_x[np.isnan(shift_x)] = 0  # Voorkom deling door 0
+            shift_y[np.isnan(shift_y)] = 0
+            return shift_x, shift_y
+
+        # Corrigeer een kanaal
+        def apply_radial_shift(channel, shift_x, shift_y):
+            """Pas de verschuivingen toe op een kleurkanaal."""
+            map_x, map_y = np.meshgrid(np.arange(channel.shape[1]), np.arange(channel.shape[0]))
+            map_x = (map_x - shift_x).astype(np.float32)
+            map_y = (map_y - shift_y).astype(np.float32)
+            corrected = cv2.remap(channel, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+            return corrected
+
+        # Parameters voor verschuivingen
+        scale_factor_red = 0.004  # Pas aan op basis van quiver-plot of experimenten
+        scale_factor_blue = -0.003
+
+        # Bereken verschuivingskaarten voor rode en blauwe kanalen
+        shift_x_r, shift_y_r = radial_shift_map(g.shape, scale_factor_red)
+        shift_x_b, shift_y_b = radial_shift_map(g.shape, scale_factor_blue)
+
+        # Corrigeer de rode en blauwe kanalen
+        aligned_r = apply_radial_shift(r, shift_x_r, shift_y_r)
+        aligned_b = apply_radial_shift(b, shift_x_b, shift_y_b)
+
+        # Combineer de gecorrigeerde kanalen
+        aligned_image = cv2.merge((aligned_b, g, aligned_r))
+
+        return aligned_image
+
     # Function to process frames with median filter
     def mediaan_filter_op_frame_basis(frame):
         # If this is the first frame in the sequence, initialize frames
@@ -449,9 +499,9 @@ def process_frame(frame, frameOrig, show_steps=False):
 
         #frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
 
-        if True:
-            frame = align_and_stabilize_frame(process_frame.frames[-1],frame)
-            frame, _ = stabiliseer_frames(process_frame.frames[-1],frame)
+
+        frame = align_and_stabilize_frame(process_frame.frames[-1],frame)
+        frame, _ = stabiliseer_frames(process_frame.frames[-1],frame)
 
         process_frame.frames = process_frame.frames[1:] + [frame]
 
@@ -461,11 +511,12 @@ def process_frame(frame, frameOrig, show_steps=False):
 
     #frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 12)
 
+    frame = optimaliseer_kleuren(frame)
+
     frame = mediaan_filter_op_frame_basis(frame)
 
     return frame
 
-@cuda.jit()
 def process_video(input_path, original, output_path, show_steps=False, show_processed_frame=True):
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -498,8 +549,8 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
 
         printProgressBar(counter_iterations, total_iterations)
         counter_iterations += 1
-        #if show_processed_frame:
-        #    cv2.imshow('Processing Video', frame)
+        if show_processed_frame:
+            cv2.imshow('Processing Video', frame)
         if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
@@ -512,7 +563,7 @@ def main():
 
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", False)
+                  "output/archive_2017-01-07_President_Obama's_Weekly_Address.mp4")
     """
     process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
