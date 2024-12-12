@@ -16,7 +16,11 @@ class ColorParams:
     USubstract = 190
     VSubstract = 140
 
-def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams ,show_steps=False,evaluate=False) -> tuple[cv2.typing.MatLike, float, float, float]:
+@dataclass
+class Enablers:
+    rek = True
+
+def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams,enable:Enablers ,show_steps=False,evaluate=False) -> tuple[cv2.typing.MatLike, float, float, float]:
     frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
 
     # YUV modifier - kringverzwakking

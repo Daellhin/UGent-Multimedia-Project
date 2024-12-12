@@ -1,5 +1,6 @@
 import math
 import random
+import time
 from typing import Sequence
 import skimage
 from imageio.core import image_as_uint
@@ -12,7 +13,7 @@ from scipy.io import wavfile
 import moviepy
 from visualisations import *
 from brent2 import process_frame as pf
-from brent2 import ColorParams
+from brent2 import ColorParams, Enablers
 
 def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
     rows, cols = shape
@@ -215,7 +216,7 @@ def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, sho
 """
 
 
-def optimaliseer_kleuren(frame):
+def optimaliseer_kleurrek(frame):
     # Splits de afbeelding in BGR-kanalen
     b, g, r = cv2.split(frame)
 
@@ -261,7 +262,7 @@ def optimaliseer_kleuren(frame):
 
     return aligned_image
 
-def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, show_steps=False, show_processed_frame=True):
+def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, enable:Enablers, show_steps=False, show_processed_frame=True):
     print("Processing "+input_path)
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -287,9 +288,9 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
         ret, frameOrig = capOrig.read()
         if not ret:
             break
-
-        frame = optimaliseer_kleuren(frame)
-        frameOut, mse, psnr, ssim = pf(frame, frameOrig,color_params, show_steps, True)
+        if enable.rek:
+            frame = optimaliseer_kleurrek(frame)
+        frameOut, mse, psnr, ssim = pf(frame, frameOrig,color_params,enable, show_steps, True)
         mse_list.append(mse)
         psnr_list.append(psnr)
         ssim_list.append(ssim)
@@ -300,7 +301,7 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
             cv2.imshow('Processing Video', frameOut)
         if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    print(mse_list,psnr_list,ssim_list)
+    #print(mse_list,psnr_list,ssim_list)
     print("MSE=",np.mean(mse_list)," PSNR=",np.mean(psnr_list)," SSIM=",np.mean(ssim_list))
     # Release everything
     cap.release()
@@ -320,46 +321,29 @@ def main():
     audio_clip.close()
     video_clip.close()"""
 
-    defaults = ColorParams()
+    timestamp = time.strftime("%d-%m-%Y_%H%M%S")
+    defaultsColor = ColorParams()
+    defaultsEnable = Enablers()
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/2017-01-07_President_Obama's_Weekly_Address.mp4",defaults)
-
-    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-     #             "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-     #             "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-     #             {
-     #                 "Vmultiply": 1,
-     #                 "Sadd": 20, "Smultiply": 1.5,
-     #                 "filterSize": 5, "sigma": 1080 / 2,
-     #                 "gausRAdj": -0.3, "gausGAdj": 0.1, "gausBAdj": -0.8,
-     #                 "Rmultiply": 0.8, "Gmultiply": 0.8, "Bmultiply": 0.7,
-     #                 "Rsubstract": -20, "Gsubstract": -30, "Bsubstract": -20
-     #             })
-
-    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              {
-    #                  "Vmultiply": 0.75,
-    #                  "Sadd": 20, "Smultiply": 1.5,
-    #                  "filterSize": 5, "sigma": 1080 / 2,
-    #                  "gausRAdj": -0.3, "gausGAdj": 0.1, "gausBAdj": -0.8,
-    #                  "Rmultiply": 0.8, "Gmultiply": 0.8, "Bmultiply": 0.7,
-    #                  "Rsubstract": -20, "Gsubstract": -30, "Bsubstract": -20
-    #              })
-    #process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #              "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #              params)
-    #process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
-    #              "../SourceVideos/Robin_Singing_video.mp4",
-    #              "output/Robin_Singing_video.mp4",
-    #              params)
-    #process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #              "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #              "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #              params)
+                  f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
+                  defaultsColor,defaultsEnable)
+    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
+                   defaultsColor,defaultsEnable)
+    process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+                  "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+                  f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
+                  defaultsColor,defaultsEnable)
+    process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
+                  "../SourceVideos/Robin_Singing_video.mp4",
+                  f"output/Robin_Singing_video_{timestamp}.mp4",
+                  defaultsColor,defaultsEnable)
+    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+                  "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+                  f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
+                  defaultsColor,defaultsEnable)
     #process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
     #              "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
     #              "output/Apollo_11_Landing_-_first_steps_on_the_moon.mp4")
