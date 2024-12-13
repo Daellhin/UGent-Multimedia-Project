@@ -8,21 +8,14 @@ from statistics import *
 from typing import Callable, Literal
 
 import cv2
-import matplotlib.pyplot as plt
 import noisereduce as nr
 import numpy as np
-import pywt
-import scipy
-import scipy.fft as fft
-import soundfile as sf
-from moviepy import AudioClip, AudioFileClip, VideoFileClip
-from scipy import fft, signal
-from scipy.interpolate import interp1d
+from moviepy import AudioFileClip, VideoFileClip
+from scipy import signal
 from scipy.io import wavfile
+from skimage import metrics
 from utils import *
 from visualisations import *
-
-show_images = True
 
 
 @dataclass
@@ -47,7 +40,12 @@ class ReduceNoiseFilters:
 
 
 def sterio_notch_filter(
-    stereo_audio: list[list[float]], fs: int, frequency: float, Q: float = 30.0, order=1
+    stereo_audio: list[list[float]],
+    fs: int,
+    frequency: float,
+    Q: float = 30.0,
+    order=1,
+    debug=False,
 ):
     """
     Removes a specific frequency using IIR notch filter
@@ -56,11 +54,15 @@ def sterio_notch_filter(
     """
     left_channel, right_channel = stereo_to_mono(stereo_audio)
 
-    b, a = signal.iirnotch(frequency, Q, fs)
+    b_cascade, a_cascade = signal.iirnotch(frequency, Q, fs)
+    b = reduce(np.convolve, [b_cascade] * order)
+    a = reduce(np.convolve, [a_cascade] * order)
 
-    for _ in range(order):
-        left_channel = signal.filtfilt(b, a, left_channel)
-        right_channel = signal.filtfilt(b, a, right_channel)
+    if debug:
+        plot_notch_filter(b, a, fs, frequency, Q, order)
+
+    left_channel = signal.filtfilt(b, a, left_channel)
+    right_channel = signal.filtfilt(b, a, right_channel)
 
     return mono_to_stereo(left_channel, right_channel)
 
@@ -81,9 +83,9 @@ def stereo_butterworth_filter(
     nyquist = 0.5 * fs
     normalised_cutoff = cutoff / nyquist
     b, a = signal.butter(order, normalised_cutoff, btype=type)
-    
+
     if debug:
-        plot_butterworth_filter(b, a, fs, cutoff, order)
+        plot_lowpass_filter(b, a, fs, cutoff, order)
 
     filtered_left = signal.lfilter(b, a, left_channel)
     filtered_right = signal.lfilter(b, a, right_channel)
@@ -209,7 +211,7 @@ def apply_audio_filters(
     debug=False,
 ) -> list[list[float]]:
     filtered_audio_1 = reduce(
-        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.Q, f.order),
+        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.Q, f.order, debug),
         notch_filters,
         audio_samples,
     )
@@ -225,50 +227,24 @@ def apply_audio_filters(
         reduce_noise_filters,
         filtered_audio_2,
     )
-    filtered_audio_3 = sterio_amplifie_audio(filtered_audio_3, amplification_factor)
+    filtered_audio_4 = sterio_amplifie_audio(filtered_audio_3, amplification_factor)
 
     if debug:
         show_stereo_spectrograms(
-            [filtered_audio_2],
+            [filtered_audio_3],
             fs,
             "Noise reduction Spectogram",
             end_time=5,
             log_scale=False,
         )
 
-    return filtered_audio_3
-
-
-def process_frame(
-    get_frame: Callable[[float], np.ndarray], time: float, frame_duration: float
-):
-    """
-    Process frame callback:
-    - use get_frame with time to get current frame
-    - use get_frame with multiple times to get multiple frames(much slower)
-    """
-    # -- Get frame(s) --
-    frame = get_frame(time)
-    # times = np.arange(0, 4) * frame_duration
-    # frames = list(map(get_frame, times))
-
-    # -- Modify frame --
-
-    # -- Debug images --
-    global show_images
-    if show_images:
-        im_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        cv2.imshow("Frame", im_bgr)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        cv2.destroyAllWindows()
-        show_images = not show_images
-
-    return frame
+    return filtered_audio_4
 
 
 def process_video(
     input_path: str,
     output_path="output/output.mp4",
+    input_path_original: str = None,
     notch_filters: list[NotchFilter] = [],
     butterworth_filters: list[ButterworthFilters] = [],
     reduce_noise_filters: list = [],
@@ -279,13 +255,13 @@ def process_video(
     print("-- Processing: ", input_path)
 
     # -- Video processing --
-    video = VideoFileClip(input_path)
-    print(f"Processing video (s={video.duration})")
-    processed_video = video
+    video_original = VideoFileClip(input_path)
+    print(f"Processing video (s={video_original.duration})")
+    processed_video = video_original
 
     # -- Audio processing --
     # Load audio
-    audio = video.audio
+    audio = video_original.audio
     fs = audio.fps
     print(f"Loading audio frames (fs={fs}) (s={audio.duration})")
     audio_samples: list[list[float]] = list(audio.to_soundarray())
@@ -308,6 +284,18 @@ def process_video(
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
 
+    if input_path_original:
+        video_original = VideoFileClip(input_path_original)
+        audio_2 = VideoFileClip(input_path).audio
+        audio_original = video_original.audio
+        fs_original = audio_original.fps
+        print(
+            f"Loading original audio frames (fs={fs_original}) (s={audio_original.duration})"
+        )
+
+        audio_samples_original: list[list[float]] = list(audio_original.to_soundarray())
+        compare_audio(audio_samples_original, audio_samples, processed_audio)
+
     if output_video:
         # -- Combine video and audio --
         t = AudioFileClip(audio_path)
@@ -316,13 +304,40 @@ def process_video(
         # -- Output results --
         result.write_videofile(output_path)
 
+def compare_audio(
+    audio_samples_orig: list[list[float]],
+    audio_samples_degr: list[list[float]],
+    audio_samples_proc: list[list[float]],
+):
+    """
+    Berekend:
+    - Mean Squared Error (MSE): [0, ∞] -> 0 is perfect
+    - Peak Signal to Noise Ratio (PSNR): [0, ∞] -> ∞ is perfect
+    """
+    length_proc = len(audio_samples_proc)
+    length_orig = len(audio_samples_orig)
 
-def compair_audio(original_path: str, filtered_path: str):
-    original = AudioFileClip(original_path)
-    filtered = AudioFileClip(filtered_path)
+    if length_proc != length_orig:
+        min_length = min(length_proc, length_orig)
+        print(
+            f"Warning: Audio lengths do not match, processed: {length_proc}, original: {length_orig}. Using minimum: {min_length}"
+        )
+        audio_samples_orig = audio_samples_orig[:min_length]
+        audio_samples_degr = audio_samples_degr[:min_length]
+        audio_samples_proc = audio_samples_proc[:min_length]
 
-    mse = stereo_calculate_MSE(original.to_soundarray(), filtered.to_soundarray())
-    print(f"MSE| chanel 0: {mse[0]}, chanel 1: {mse[1]}")
+    left_channel_proc = np.array(stereo_to_mono(audio_samples_proc)[0])
+    left_channel_degr = np.array(stereo_to_mono(audio_samples_degr)[0])
+    left_channel_orig = np.array(stereo_to_mono(audio_samples_orig)[0])
+
+    mse_degr = metrics.mean_squared_error(left_channel_orig, left_channel_degr)
+    mse_proc = metrics.mean_squared_error(left_channel_orig, left_channel_proc)
+    psnr_degr = metrics.peak_signal_noise_ratio(left_channel_orig, left_channel_degr)
+    psnr_proc = metrics.peak_signal_noise_ratio(left_channel_orig, left_channel_proc)
+
+    print(f"MSE: {mse_degr} -> {mse_proc}")
+    print(f"PSNR: {psnr_degr} -> {psnr_proc}")
+    return (mse_degr, mse_proc), (psnr_degr, psnr_proc)
 
 
 def main():
@@ -332,11 +347,12 @@ def main():
     process_video(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
         "output/output_obama.mp4",
-        notch_filters=[NotchFilter(100, 1, 2)],
+        "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
+        notch_filters=[NotchFilter(100, 30, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
-        debug=True,
+        debug=False,
         output_video=False,
     )
     # process_video(
