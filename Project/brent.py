@@ -27,195 +27,6 @@ def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
         plt.show()
     return mask
 
-"""
-def process_frame(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,show_steps=False,evaluate=False, params=None) -> tuple[cv2.typing.MatLike, float, float, float]:
-    if params is None:
-        params = {
-            "filterSize": 5,
-            "sigma": 1080 / 2,
-            "gausYAdj": 0.01,
-            "gausCrAdj": 0.01,
-            "gausCbAdj": 0.01,
-            "Crmultiply": 1,
-            "Crsubstract": 0,
-            "Cbmultiply": 1,
-            "Cbsubstract": 0,
-            "Ymultiply": 1,
-            "Ysubstract": 0,
-            "Sadd": 0,
-            "Smultiply": 1,
-            "Vmultiply" : 1
-        }
-
-    # YUV modifier - kringverzwakking
-    yrb = cv2.cvtColor(frame,cv2.COLOR_BGR2YCrCb)
-    y, cr, cb = cv2.split(yrb)
-    yrb_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YCrCb)
-    yo, cro, cbo = cv2.split(yrb_or)
-
-    if show_steps:
-        cv2.imwrite("output/start_Frame.jpg",frame)
-        show_histogram(y, yo, "Y", "Y Original")
-        show_histogram(cr, cro, "Cr", "Cr original")
-        show_histogram(cb, cbo, "Cb", "Cb Original")
-
-    y = cv2.multiply(y, params["Ymultiply"])
-    cr = cv2.multiply(cr,params["Crmultiply"])
-    cb = cv2.multiply(cb, params["Cbmultiply"])
-
-    y = scipy.ndimage.median_filter(y, (params["filterSize"],params["filterSize"]))
-    mask = getGaussian2D(y.shape,params["sigma"],show_steps)
-    y = cv2.add(y.astype(np.float64), params["gausYAdj"]*mask)
-    cr = cv2.add(cr.astype(np.float64), params["gausCrAdj"]*mask)
-    cb = cv2.add(cb.astype(np.float64), params["gausCbAdj"]*mask)
-    y = cv2.subtract(y, params["Ysubstract"])
-    cr = cv2.subtract(cr, params["Crsubstract"])
-    cb = cv2.subtract(cb, params["Cbsubstract"])
-
-    y = np.clip(y,0,255).astype(np.uint8)
-    cr = np.clip(cr,0,255).astype(np.uint8)
-    cb = np.clip(cb,0,255).astype(np.uint8)
-    frame = cv2.merge((y, cr, cb))
-    frame = cv2.cvtColor(frame, cv2.COLOR_YCrCb2BGR)
-    if show_steps:
-        cv2.imwrite("output/YUV-edit_Frame.jpg",frame)
-        show_histogram(y, yo, "Y edit", "Y Original")
-        show_histogram(cr, cro, "Cr edit", "Cr original")
-        show_histogram(cb, cbo, "Cb edit", "Cb Original")
-
-    # BGR modifier
-    b, g, r = cv2.split(frame)
-    bo, go, ro = cv2.split(frameOrig)
-    #r = cv2.multiply(r,0.80)
-    #g = cv2.multiply(g,0.70)
-    #b = cv2.multiply(b,0.6)
-    #r = np.clip(r,0,255).astype(np.uint8)
-    #g = np.clip(g, 0, 255).astype(np.uint8)
-    #b = np.clip(b, 0, 255).astype(np.uint8)
-    #frame = cv2.merge((b,g,r))
-    if show_steps:
-        cv2.imwrite("output/BGR-edit_frame.jpg",frame)
-        show_histogram(r, ro, "Red After", "Red Original")
-        show_histogram(g, go, "Green After", "Green Original")
-        show_histogram(b, bo, "Blue After", "Blue Original")
-
-    #HSV modifiers
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
-    ho, so, vo = cv2.split(hsvOrig)
-
-    #h = cv2.multiply(h,0.99)
-    #v = cv2.multiply(v, 0.90)
-    s = cv2.multiply(s,params["Smultiply"])
-    s = cv2.add(s, params["Sadd"])
-    h = np.clip(h,0,255).astype(np.uint8)
-    v = np.clip(v, 0, 255).astype(np.uint8)
-    s = np.clip(s, 0, 255).astype(np.uint8)
-    final_hsv = cv2.merge((h, s, v))
-    frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-    
-    if show_steps:
-        show_histogram(h, ho, "Hue After", "Hue Original")
-        show_histogram(v, vo, "Value After", "Value Original")
-        show_histogram(s, so, "Saturation After", "Saturation Original")
-
-    if evaluate:
-        cv2.imwrite("output/evaluate_frame.jpg", frame)
-        cv2.imwrite("output/original_frame.jpg", frameOrig)
-        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
-        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
-        ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
-        #print("MSE=",mse," PSNR=", psnr," SSIM=", ssim)
-        return frame, mse, psnr, ssim
-    return frame, -1, -1, -1
-
-def process_frame2(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike, show_steps=False, evaluate=False,
-                   params=None) -> tuple[cv2.typing.MatLike, float, float, float]:
-    if params is None:
-        params = {
-            "filterSize": 5,
-            "sigma": 1080 / 2,
-            "gausRAdj": 0.01,
-            "gausGAdj": 0.01,
-            "gausBAdj": 0.01,
-            "Rmultiply": 1,
-            "Rsubstract": 0,
-            "Gmultiply": 1,
-            "Gsubstract": 0,
-            "Bmultiply": 1,
-            "Bsubstract": 0,
-            "Sadd": 0,
-            "Smultiply": 1,
-            "Vmultiply" : 1
-        }
-    frame = cv2.blur(frame,(5,5))
-
-    # HSV modifiers
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    h, s, v = cv2.split(hsv)
-    hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
-    ho, so, vo = cv2.split(hsvOrig)
-
-    # h = cv2.multiply(h,0.99)
-    v = cv2.multiply(v, params["Vmultiply"])
-    s = cv2.multiply(s, params["Smultiply"])
-    s = cv2.add(s, params["Sadd"])
-    h = np.clip(h, 0, 255).astype(np.uint8)
-    v = np.clip(v, 0, 255).astype(np.uint8)
-    s = np.clip(s, 0, 255).astype(np.uint8)
-    final_hsv = cv2.merge((h, s, v))
-    frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
-    if show_steps:
-        show_histogram(h, ho, "Hue After", "Hue Original")
-        show_histogram(v, vo, "Value After", "Value Original")
-        show_histogram(s, so, "Saturation After", "Saturation Original")
-
-
-    # BGR modifier
-    b, g, r = cv2.split(frame)
-    bo, go, ro = cv2.split(frameOrig)
-    if show_steps:
-        cv2.imwrite("output/HSV-edit_frame.jpg", frame)
-        show_histogram(r, ro, "Red After", "Red Original")
-        show_histogram(g, go, "Green After", "Green Original")
-        show_histogram(b, bo, "Blue After", "Blue Original")
-
-    #y = scipy.ndimage.median_filter(y, (params["YfilterSize"], params["YfilterSize"]))
-    mask = getGaussian2D(r.shape, params["sigma"], show_steps)
-    r = cv2.add(r.astype(np.float64),params['gausRAdj']*mask)
-    g = cv2.add(g.astype(np.float64), params['gausGAdj'] * mask)
-    b = cv2.add(b.astype(np.float64), params['gausBAdj'] * mask)
-    #r = cv2.multiply(r.astype(np.float64), 1 + params["gausRAdj"] * mask)
-    #g = cv2.multiply(g.astype(np.float64), 1 + params["gausGAdj"] * mask)
-    #b = cv2.multiply(b.astype(np.float64), 1 + params["gausBAdj"] * mask)
-    r = cv2.subtract(r, params["Rsubstract"])
-    r = cv2.multiply(r, params["Rmultiply"])
-    b = cv2.subtract(b, params["Bsubstract"])
-    b = cv2.multiply(b, params["Bmultiply"])
-    g = cv2.subtract(g, params["Gsubstract"])
-    g = cv2.multiply(g, params["Gmultiply"])
-
-    r = np.clip(r,0,255).astype(np.uint8)
-    g = np.clip(g, 0, 255).astype(np.uint8)
-    b = np.clip(b, 0, 255).astype(np.uint8)
-    frame = cv2.merge((b,g,r))
-    if show_steps:
-        show_histogram(r, ro, "Red After", "Red Original")
-        show_histogram(g, go, "Green After", "Green Original")
-        show_histogram(b, bo, "Blue After", "Blue Original")
-
-    if evaluate:
-        cv2.imwrite("output/evaluate_frame.jpg", frame)
-        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  #naar 0!
-        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig,frame)
-        ssim = skimage.metrics.structural_similarity(frameOrig,frame,channel_axis=-1) #naar 1!
-        #print(mse,psnr,ssim)
-        return frame, mse, psnr, ssim
-    return frame, -1,-1,-1
-"""
-
-
 def optimaliseer_kleurrek(frame):
     # Splits de afbeelding in BGR-kanalen
     b, g, r = cv2.split(frame)
@@ -344,27 +155,29 @@ def main():
     process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
                   "../SourceVideos/Robin_Singing_video.mp4",
                   f"output/Robin_Singing_video_{timestamp}.mp4",
-                  femaleColor, edit_no_show)"""
+                  femaleColor, edit_no_show)
     process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
-    """process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+                  femaleColor, edit_no_show)
+    process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
-                  noEffectColor,allOff)
+                  noEffectColor,allOff)"""
+    archive = ColorParams(3, 1080//2, 0, 0, 2/3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
     process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
-                  obamaColor,allOff)
-    process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
-                  "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-                  f"output\Edison_speech,_1920s_{timestamp}.mp4",
-                  noEffectColor,allOff)
+                  archive,allOff)
+    """archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
     process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   f"output\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
-                  obamaColor,allOff)
+                  archive,allOff)
+    process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
+                  "..\ArchiveVideos\Edison_speech,_1920s.mp4",
+                  f"output\Edison_speech,_1920s_{timestamp}.mp4",
+                  noEffectColor, allOff)
     process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   f"output\The_Dream_of_Kings_{timestamp}.mp4",

@@ -403,7 +403,7 @@ def main():
     obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
     allOff = Enablers(show_processed_frame=True)
     edit_no_show = Enablers(rek=True, show_processed_frame=True, stabilize=True,evaluate=True)
-    """process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
                   obamaColor, edit_no_show)
@@ -420,8 +420,8 @@ def main():
     process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
                   "../SourceVideos/Robin_Singing_video.mp4",
                   f"output/Robin_Singing_video_{timestamp}.mp4",
-                  femaleColor, edit_no_show)"""
-    """process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+                  femaleColor, edit_no_show)
+    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
                   obamaColor, edit_no_show)
@@ -429,18 +429,20 @@ def main():
                   "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
                   noEffectColor, allOff)
+    archive = ColorParams(3, 1080//2, 0, 0, 2/3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
     process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
-                  obamaColor, allOff)
+                  archive, allOff)
     process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
                   "..\ArchiveVideos\Edison_speech,_1920s.mp4",
                   f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
                   noEffectColor, allOff)
+    archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
     process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
-                   obamaColor, allOff)"""
+                   archive, allOff)
     process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   f"output\The_Dream_of_Kings_{timestamp}.mp4",
