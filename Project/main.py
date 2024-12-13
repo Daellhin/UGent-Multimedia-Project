@@ -12,18 +12,7 @@ import moviepy
 from visualisations import *
 from dataclasses import dataclass
 import skimage
-
-def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
-    rows, cols = shape
-    kernel_x = cv2.getGaussianKernel(cols, sigma)
-    kernel_y = cv2.getGaussianKernel(rows, sigma)
-    kernel = kernel_y * kernel_x.T
-    mask = 1 - kernel / np.linalg.norm(kernel)
-    mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
-    if show:
-        plt.imshow(mask)
-        plt.show()
-    return mask
+from scipy.optimize import minimize
 
 @dataclass
 class ColorParams():
@@ -52,6 +41,7 @@ class Enablers():
     show_color_steps :bool = False
     show_processed_frame :bool = False
     evaluate :bool = False
+    stabilize : bool = False
 
 def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams,enable:Enablers ,show_steps=False,evaluate=False) -> tuple[cv2.typing.MatLike, float, float, float]:
     frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
@@ -179,8 +169,8 @@ def optimaliseer_kleurrek(frame):
         return corrected
 
     # Parameters voor verschuivingen
-    scale_factor_red = 0.003  # Pas aan op basis van quiver-plot of experimenten
-    scale_factor_blue = -0.001
+    scale_factor_red = 0.004  # Pas aan op basis van quiver-plot of experimenten
+    scale_factor_blue = -0.003
 
     # Bereken verschuivingskaarten voor rode en blauwe kanalen
     shift_x_r, shift_y_r = radial_shift_map(g.shape, scale_factor_red)
@@ -194,6 +184,172 @@ def optimaliseer_kleurrek(frame):
     aligned_image = cv2.merge((aligned_b, g, aligned_r))
 
     return aligned_image
+
+def create_gaussian_kernel(size=15, sigma=3):
+    """Create a 2D Gaussian kernel."""
+    x = np.linspace(-size // 2, size // 2, size)
+    y = np.linspace(-size // 2, size // 2, size)
+    x, y = np.meshgrid(x, y)
+    kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
+    return kernel / kernel.sum()
+
+def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
+
+    def stabiliseer_frames(img1, img2):
+        # Convert images to grayscale for feature detection
+        gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+
+        # Use ORB for feature detection and matching
+        orb = cv2.ORB_create()
+
+        # Detect keypoints and compute descriptors
+        kp1, des1 = orb.detectAndCompute(gray1, None)
+        kp2, des2 = orb.detectAndCompute(gray2, None)
+
+        # Create brute-force matcher
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+        # Match descriptors
+        matches = bf.match(des1, des2)
+
+        # Sort matches by distance
+        matches = sorted(matches, key=lambda x: x.distance)
+
+        # Select good matches
+        good_matches = matches[:40]
+
+        # Extract matched keypoints
+        src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+        # Estimate translation matrix
+        translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts)
+
+        # Apply translation to the color image
+        #aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
+
+        aligned_img2 = cv2.warpAffine(
+            img2,
+            translation_matrix,
+            (img1.shape[1], img1.shape[0]),
+            borderMode=cv2.BORDER_REPLICATE  # Herhaalt de randpixels
+        )
+
+        return aligned_img2, translation_matrix
+
+    def align_and_stabilize_frame(prev_frame, curr_frame):
+        """
+        Stabiliseert een frame en aligneert de kleuren tussen frames.
+        """
+        # Split de frames in kleurkanalen
+        b1, g1, r1 = cv2.split(prev_frame)
+        b2, g2, r2 = cv2.split(curr_frame)
+
+        def calculate_alignment_error(params, target_channels, source_channels):
+            """
+            Berekent aligneringsfout tussen kleurkanalen.
+            """
+            b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = params
+
+            # Verschuif kleurkanalen
+            b_aligned = cv2.warpAffine(source_channels[0], np.float32([[1, 0, b_dx], [0, 1, b_dy]]),
+                                       (target_channels[0].shape[1], target_channels[0].shape[0]))
+            g_aligned = cv2.warpAffine(source_channels[1], np.float32([[1, 0, g_dx], [0, 1, g_dy]]),
+                                       (target_channels[1].shape[1], target_channels[1].shape[0]))
+            r_aligned = cv2.warpAffine(source_channels[2], np.float32([[1, 0, r_dx], [0, 1, r_dy]]),
+                                       (target_channels[2].shape[1], target_channels[2].shape[0]))
+
+            # Bereken verschil tussen gealigneerde en doel-kanalen
+            diff = np.abs(target_channels[0].astype(float) - b_aligned.astype(float)) + \
+                   np.abs(target_channels[1].astype(float) - g_aligned.astype(float)) + \
+                   np.abs(target_channels[2].astype(float) - r_aligned.astype(float))
+            return np.mean(diff)
+
+        # Initiële verschuivingen vinden
+        initial_shifts = [0, 0, 0, 0, 0, 0]
+        res = minimize(calculate_alignment_error, initial_shifts, args=([b1, g1, r1], [b2, g2, r2]),
+                       method='Nelder-Mead')
+        b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = res.x
+
+        # Bereken transformatiematrices
+        b_matrix = np.float32([[1, 0, b_dx], [0, 1, b_dy]])
+        g_matrix = np.float32([[1, 0, g_dx], [0, 1, g_dy]])
+        r_matrix = np.float32([[1, 0, r_dx], [0, 1, r_dy]])
+
+        # Transformeer kleurkanalen
+        b_aligned = cv2.warpAffine(b2, b_matrix, (prev_frame.shape[1], prev_frame.shape[0]),
+                                   borderMode=cv2.BORDER_REPLICATE)
+        g_aligned = cv2.warpAffine(g2, g_matrix, (prev_frame.shape[1], prev_frame.shape[0]),
+                                   borderMode=cv2.BORDER_REPLICATE)
+        r_aligned = cv2.warpAffine(r2, r_matrix, (prev_frame.shape[1], prev_frame.shape[0]),
+                                   borderMode=cv2.BORDER_REPLICATE)
+
+        # Recombineer kleurkanalen
+        aligned_and_stabilized = cv2.merge([b_aligned, g_aligned, r_aligned])
+
+        return aligned_and_stabilized
+
+    def verwijder_lijnen(frame):
+        if len(frame.shape) != 2:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = frame
+
+        gray = cv2.bitwise_not(gray)
+        bw = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                   cv2.THRESH_BINARY, 15, -2)
+
+        vertical = np.copy(bw)
+
+        rows = vertical.shape[0]
+        vertical_size = rows // 30
+
+        verticalStructure = cv2.getStructuringElement(cv2.MORPH_RECT, (1, vertical_size))
+
+        vertical = cv2.erode(vertical, verticalStructure)
+        vertical = cv2.dilate(vertical, verticalStructure)
+
+        frame = cv2.inpaint(frame, vertical, 5, cv2.INPAINT_TELEA)
+
+        return frame
+
+    def mediaan_filter_op_frame_basis(frame):
+        # If this is the first frame in the sequence, initialize frames
+        if not hasattr(stabiliseer_en_mediaan_frame, 'frames'):
+            stabiliseer_en_mediaan_frame.frames = [frame] * 4
+
+        # frame, translation_matrix = stabiliseer_frames(process_frame.frames[-1],frame)
+        frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 17)
+
+        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+        frame = cv2.filter2D(frame, -1, kernel)
+
+        # frame = align_color_channels(frame)
+
+        # frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
+
+        frame = verwijder_lijnen(frame)
+        b, g, r = cv2.split(frame)
+        b = scipy.ndimage.median_filter(b, (1, 5))
+        g = scipy.ndimage.median_filter(g, (1, 5))
+        r = scipy.ndimage.median_filter(r, (1, 5))
+        frame = cv2.merge((b, g, r))
+        frame = verwijder_lijnen(frame)
+
+        if enable.stabilize:
+            frame = align_and_stabilize_frame(stabiliseer_en_mediaan_frame.frames[-1], frame)
+            frame, _ = stabiliseer_frames(stabiliseer_en_mediaan_frame.frames[-1], frame)
+
+        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [frame]
+
+        # Calculate median of last 4 frames
+        stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
+        return np.median(stacked_frames, axis=-1).astype(np.uint8)
+
+    frame = mediaan_filter_op_frame_basis(frame)
+
+    return frame
 
 def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, enable:Enablers):
     # Open the video file
@@ -226,6 +382,7 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
         mse_list.append(mse)
         psnr_list.append(psnr)
         ssim_list.append(ssim)
+        frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
         out.write(frameOut)
         eval_frame+=1
 
@@ -245,8 +402,8 @@ def main():
     noEffectColor = ColorParams()
     obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
     allOff = Enablers(show_processed_frame=True)
-    edit_no_show = Enablers(rek=True, show_processed_frame=True)
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+    edit_no_show = Enablers(rek=True, show_processed_frame=True, stabilize=True)
+    """process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
                   obamaColor, edit_no_show)
@@ -281,7 +438,7 @@ def main():
     process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
-                   obamaColor, allOff)
+                   obamaColor, allOff)"""
     process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   f"output\The_Dream_of_Kings_{timestamp}.mp4",
