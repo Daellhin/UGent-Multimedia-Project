@@ -1,7 +1,7 @@
 import math
 import random
 from signal import signal
-
+import time
 import cv2
 import numpy as np
 import scipy
@@ -10,112 +10,99 @@ from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
 from visualisations import *
+from dataclasses import dataclass
+import skimage
 
-def create_gaussian_kernel(size=15, sigma=3):
-    """Create a 2D Gaussian kernel."""
-    x = np.linspace(-size // 2, size // 2, size)
-    y = np.linspace(-size // 2, size // 2, size)
-    x, y = np.meshgrid(x, y)
-    kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
-    return kernel / kernel.sum()
+def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
+    rows, cols = shape
+    kernel_x = cv2.getGaussianKernel(cols, sigma)
+    kernel_y = cv2.getGaussianKernel(rows, sigma)
+    kernel = kernel_y * kernel_x.T
+    mask = 1 - kernel / np.linalg.norm(kernel)
+    mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
+    if show:
+        plt.imshow(mask)
+        plt.show()
+    return mask
 
-def process_frame(frame, frameOrig, show_steps=False):
-    # Wiener filter
-    def wiener_filter(img, kernel, k=0.01):
-        # Process each channel separately
-        restored_channels = []
-        for channel in cv2.split(img):
-            # Pad the kernel to match image size by placing it in the center
-            padded_kernel = np.zeros(channel.shape)
-            kh, kw = kernel.shape
-            center_y = padded_kernel.shape[0] // 2 - kh // 2
-            center_x = padded_kernel.shape[1] // 2 - kw // 2
-            padded_kernel[center_y: center_y + kh, center_x: center_x + kw] = kernel
+@dataclass
+class ColorParams():
+    #eerste filter voor bewerking
+    FilterSize :int = 3
+    #kleuraanpassing met gausiaanse vorm (hoog aan randen)
+    GaussianSize :int = 1080
+    UGaussianAdjust :float = 0
+    VGaussianAdjust :float = 0
+    YGaussianAdjust :float = 0
+    #YUV-kleurcorrecties
+    UMultiply :float = 1
+    VMultiply :float = 1
+    YSubstract :int = 0
+    USubstract :int = 0
+    VSubstract :int = 0
+    #HSV-kleurcorrecties
+    SaturationAdd :int = 0
+    SaturationMultiply :float = 1
+    ValueAdd :int = 0
+    ValueMultiply :float = 1
 
-            # Convert to frequency domain
-            # H = np.fft.fft2(np.fft.ifftshift(padded_kernel))
-            H = np.fft.fft2(np.fft.fftshift(padded_kernel))
-            G = np.fft.fft2(channel.astype(float))
+@dataclass
+class Enablers():
+    rek :bool = False
+    show_color_steps :bool = False
+    show_processed_frame :bool = False
+    evaluate :bool = False
 
-            # Apply Wiener filter
-            H_conj = np.conj(H)
-            H_abs_sq = np.abs(H) ** 2
-            F = H_conj / (H_abs_sq + k) * G
-
-            # Convert back to spatial domain
-            restored = np.abs(np.fft.ifft2(F))
-
-            # Normalize to [0, 255] range
-            restored = (restored - restored.min()) * 255 / (restored.max() - restored.min())
-            restored_channels.append(restored.astype(np.uint8))
-
-        # Merge channels back together
-        restored_image = cv2.merge(restored_channels)
-
-        # show_results_old(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
-        # plot_image(cv2.cvtColor(restored_image, cv2.COLOR_BGR2RGB))
-        return restored_image
-
-    #frame = wiener_filter(frame, create_gaussian_kernel(sigma=1))
-
+def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams,enable:Enablers ,show_steps=False,evaluate=False) -> tuple[cv2.typing.MatLike, float, float, float]:
+    frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
 
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
-    yuv_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YUV)
-    yo, uo, vo = cv2.split(yuv_or)
 
     if show_steps:
         cv2.imwrite("output/start_Frame.jpg", frame)
-        # show_histogram(y, yo, "Y", "Y Original")
-        # show_spectrum(y, yo, "Y")
-        # show_histogram(u, uo, "U", "U original")
-        # show_spectrum(u, uo, "U")
-        # show_histogram(v, vo, "V", "V Original")
-        # show_spectrum(v, vo, "V")
+        yuv_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YUV)
+        yo, uo, vo = cv2.split(yuv_or)
+        show_histogram(y, yo, "Y", "Y Original")
+        show_histogram(u, uo, "U", "U original")
+        show_histogram(v, vo, "V", "V Original")
 
     # y = scipy.ndimage.median_filter(y, (3,3))
-    y = cv2.blur(y, (5, 5))
-
     rows, cols = v.shape
-    kernel_x = cv2.getGaussianKernel(cols, 1080/2)
-    kernel_y = cv2.getGaussianKernel(rows, 1080/2)
+    kernel_x = cv2.getGaussianKernel(cols, params.GaussianSize)
+    kernel_y = cv2.getGaussianKernel(rows, params.GaussianSize)
     kernel = kernel_y * kernel_x.T
     mask = 1 - kernel / np.linalg.norm(kernel)
     mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
     if show_steps:
         plt.imshow(mask)
         plt.show()
-    y = cv2.multiply(y.astype(np.float64), 3 / 4 + 1 / 2 * mask)
-    u = cv2.multiply(u.astype(np.float64), 1 + 0.01 * mask)
-    v = cv2.multiply(v.astype(np.float64), 1 + 0.01 * mask)
-    u = cv2.multiply(u, 2.5)
-    u = cv2.subtract(u, 190)
-    v = cv2.multiply(v, 2.1)
-    v = cv2.subtract(v, 140)
-
-    # u = scipy.ndimage.gaussian_filter(u,1.2)
-    # v = scipy.ndimage.gaussian_filter(v, 1.2)
+    y = cv2.multiply(y.astype(np.float64), 1 - params.YGaussianAdjust / 2 + params.YGaussianAdjust * mask)
+    u = cv2.multiply(u.astype(np.float64), 1 + params.UGaussianAdjust * mask)
+    v = cv2.multiply(v.astype(np.float64), 1 + params.VGaussianAdjust * mask)
+    y = cv2.subtract(y, params.YSubstract)
+    u = cv2.multiply(u, params.UMultiply)
+    u = cv2.subtract(u, params.USubstract)
+    v = cv2.multiply(v, params.VMultiply)
+    v = cv2.subtract(v, params.VSubstract)
     y = np.clip(y, 0, 255).astype(np.uint8)
     u = np.clip(u, 0, 255).astype(np.uint8)
     v = np.clip(v, 0, 255).astype(np.uint8)
-    frame = cv2.merge((y, u, v))
+    if show_steps:
+        yuv_or = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2YUV)
+        yo, uo, vo = cv2.split(yuv_or)
+        show_histogram(y, yo, "Y edit", "Y Original")
+        show_histogram(u, uo, "U edit", "U original")
+        show_histogram(v, vo, "V edit", "V Original")
 
+    frame = cv2.merge((y, u, v))
     frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR)
+    # BGR analyser
     if show_steps:
         cv2.imwrite("output/YUV-edit_Frame.jpg", frame)
-        show_histogram(y, yo, "Y edit", "Y Original")
-        # show_spectrum(y, yo, "Y")
-        show_histogram(u, uo, "U edit", "U original")
-        # show_spectrum(u, uo, "U")
-        show_histogram(v, vo, "V edit", "V Original")
-        # show_spectrum(v, vo, "V")
-
-    # BGR modifier
-    b, g, r = cv2.split(frame)
-    bo, go, ro = cv2.split(frameOrig)
-
-    if show_steps:
+        b, g, r = cv2.split(frame)
+        bo, go, ro = cv2.split(frameOrig)
         show_histogram(r, ro, "Red", "Red Original")
         show_spectrum(r, ro, "Red")
         show_histogram(g, go, "Green", "Green Original")
@@ -123,43 +110,23 @@ def process_frame(frame, frameOrig, show_steps=False):
         show_histogram(b, bo, "Blue", "Blue Original")
         show_spectrum(b, bo, "Blue")
 
-    # r = scipy.ndimage.gaussian_filter(r, 2)
-    # g = scipy.ndimage.gaussian_filter(g, 2.5)
-    # b = scipy.ndimage.gaussian_filter(b, 2)
-    # r = cv2.multiply(r,0.80)
-    # g = cv2.multiply(g,0.70)
-    # b = cv2.multiply(b,0.6)
-
-    r = np.clip(r, 0, 255).astype(np.uint8)
-    g = np.clip(g, 0, 255).astype(np.uint8)
-    b = np.clip(b, 0, 255).astype(np.uint8)
-    frame = cv2.merge((b, g, r))
-
     # HSV modifiers
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
-    hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
-    ho, so, vo = cv2.split(hsvOrig)
 
     if show_steps:
         cv2.imwrite("output/BGR-edit_frame.jpg", frame)
-        # show_histogram(h, ho, "Hue", "Hue Original")
-        # show_spectrum(h,ho,"Hue")
-        # show_histogram(v, vo, "Value", "Value Original")
-        # show_spectrum(v,vo,"Value")
-        # show_histogram(s, so, "Saturation", "Saturation Original")
-        # show_spectrum(s,so,"Saturation")
+        hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
+        ho, so, vo = cv2.split(hsvOrig)
+        show_histogram(h, ho, "Hue", "Hue Original")
+        show_histogram(v, vo, "Value", "Value Original")
+        show_histogram(s, so, "Saturation", "Saturation Original")
 
-    # h = scipy.ndimage.median_filter(h,(1,3))
-    # s = scipy.ndimage.median_filter(s, (5,5))
-    # v = scipy.ndimage.median_filter(v,(3,3))
+    v = cv2.multiply(v, params.ValueMultiply)
+    v = cv2.add(v, params.ValueAdd)
+    s = cv2.multiply(s,params.SaturationMultiply)
+    s = cv2.add(s, params.SaturationAdd)
 
-    # h = cv2.multiply(h,0.99)
-    # v = cv2.multiply(v, 0.90)
-    # s = cv2.multiply(s,1.75)
-    s = cv2.add(s, 20)
-
-    # s = scipy.ndimage.gaussian_filter(s, 4)
     h = np.clip(h, 0, 255).astype(np.uint8)
     v = np.clip(v, 0, 255).astype(np.uint8)
     s = np.clip(s, 0, 255).astype(np.uint8)
@@ -167,32 +134,68 @@ def process_frame(frame, frameOrig, show_steps=False):
     frame = cv2.cvtColor(final_hsv, cv2.COLOR_HSV2BGR)
 
     if show_steps:
+        cv2.imwrite("output/eind_frame.jpg", frame)
+        hsvOrig = cv2.cvtColor(frameOrig, cv2.COLOR_BGR2HSV)
+        ho, so, vo = cv2.split(hsvOrig)
         show_histogram(h, ho, "Hue", "Hue Original")
         show_histogram(v, vo, "Value", "Value Original")
         show_histogram(s, so, "Saturation", "Saturation Original")
 
-    # Function to process frames with median filter
-    def mediaan_filter_op_frame_basis(frame):
-        # If this is the first frame in the sequence, initialize frames
-        if not hasattr(process_frame, 'frames'):
-            process_frame.frames = [frame] * 4
-        else:
-            # Shift frames and add new frame
-            process_frame.frames = process_frame.frames[1:] + [frame]
+    if evaluate:
+        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
+        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
+        ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
+        # print(mse,psnr,ssim)
+        return frame, mse, psnr, ssim
+    return frame, -1, -1, -1
 
-        # Calculate median of last 4 frames
-        stacked_frames = np.stack(process_frame.frames, axis=-1)
-        return np.median(stacked_frames, axis=-1).astype(np.uint8)
+def optimaliseer_kleurrek(frame):
+    # Splits de afbeelding in BGR-kanalen
+    b, g, r = cv2.split(frame)
 
-    frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 12)
+    # Definieer het centrum van de afbeelding (assumeer centraal)
+    height, width = g.shape
+    center_x, center_y = width // 2, height // 2
 
-    frame = wiener_filter(frame,create_gaussian_kernel())
+    def radial_shift_map(shape, scale_factor, power=1.0):
+        """Maak een verschuivingskaart op basis van een radiale functie."""
+        h, w = shape
+        y, x = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        dx = x - center_x
+        dy = y - center_y
+        r = np.sqrt(dx ** 2 + dy ** 2) + 1e-8  # Voeg kleine waarde toe om deling door 0 te vermijden
+        # Bereken de verschuiving
+        shift_x = scale_factor * (dx / r) * (r ** power)
+        shift_y = scale_factor * (dy / r) * (r ** power)
+        return shift_x, shift_y
 
-    frame = mediaan_filter_op_frame_basis(frame)
+    # Corrigeer een kanaal
+    def apply_radial_shift(channel, shift_x, shift_y):
+        """Pas de verschuivingen toe op een kleurkanaal."""
+        map_x, map_y = np.meshgrid(np.arange(channel.shape[1]), np.arange(channel.shape[0]))
+        map_x = (map_x - shift_x).astype(np.float32)
+        map_y = (map_y - shift_y).astype(np.float32)
+        corrected = cv2.remap(channel, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        return corrected
 
-    return frame
+    # Parameters voor verschuivingen
+    scale_factor_red = 0.003  # Pas aan op basis van quiver-plot of experimenten
+    scale_factor_blue = -0.001
 
-def process_video(input_path, original, output_path, show_steps=False, show_processed_frame=True):
+    # Bereken verschuivingskaarten voor rode en blauwe kanalen
+    shift_x_r, shift_y_r = radial_shift_map(g.shape, scale_factor_red)
+    shift_x_b, shift_y_b = radial_shift_map(g.shape, scale_factor_blue)
+
+    # Corrigeer de rode en blauwe kanalen
+    aligned_r = apply_radial_shift(r, shift_x_r, shift_y_r)
+    aligned_b = apply_radial_shift(b, shift_x_b, shift_y_b)
+
+    # Combineer de gecorrigeerde kanalen
+    aligned_image = cv2.merge((aligned_b, g, aligned_r))
+
+    return aligned_image
+
+def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, enable:Enablers):
     # Open the video file
     cap = cv2.VideoCapture(input_path)
     capOrig = cv2.VideoCapture(original)
@@ -201,62 +204,88 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(f"Processing {input_path} with {frame_count} frames of {frame_width}x{frame_height} at {fps} frames/second")
 
     # Create VideoWriter object
     fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
+    eval_frame = 0
+    mse_list = []
+    psnr_list = []
+    ssim_list = []
     while cap.isOpened() and capOrig.isOpened():
         ret, frame = cap.read()
         ret, frameOrig = capOrig.read()
         if not ret:
             break
+        if enable.rek:
+            frame = optimaliseer_kleurrek(frame)
+        frameOut, mse, psnr, ssim = color_adjust(frame, frameOrig,color_params,enable, enable.show_color_steps, enable.evaluate)
+        mse_list.append(mse)
+        psnr_list.append(psnr)
+        ssim_list.append(ssim)
+        out.write(frameOut)
+        eval_frame+=1
 
-        frame = process_frame(frame, frameOrig, show_steps)
-        # Write the processed frame
-        out.write(frame)
-
-        if show_processed_frame:
-            cv2.imshow('Processing Video', frame)
-        if show_steps or cv2.waitKey(1) & 0xFF == ord('q'):
+        if enable.show_processed_frame:
+            cv2.imshow('Processing Video', frameOut)
+        if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
+    #print(mse_list,psnr_list,ssim_list)
+    print("MSE=",np.mean(mse_list)," PSNR=",np.mean(psnr_list)," SSIM=",np.mean(ssim_list))
     # Release everything
     cap.release()
     out.release()
     cv2.destroyAllWindows()
 
 def main():
+    timestamp = time.strftime("%d-%m-%Y_%H%M%S")
+    noEffectColor = ColorParams()
+    obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
+    allOff = Enablers(show_processed_frame=True)
+    edit_no_show = Enablers(rek=True, show_processed_frame=True)
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "output/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", False)
-    #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #              "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",False)
-    # process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #              "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #              "output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4")
-    # process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
-    #              "../SourceVideos/Robin_Singing_video.mp4",
-    #              "output/Robin_Singing_video.mp4")
-    # process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #              "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #              "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4")
-    #process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-    #              "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-    #              "output/Apollo_11_Landing_-_first_steps_on_the_moon.mp4")
-    #process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-    #              "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-    #              "output\Breakfast-at-tiffany-s-official®-trailer-hd.mp4")
-    #process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
-    #              "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-    #              "output\ArchiveVideos\Edison_speech,_1920s.mp4")
-    #process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-    #              "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-    #              "output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4")
-    #process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
-    #              "..\ArchiveVideos\The_Dream_of_Kings.mp4",
-    #              "output\The_Dream_of_Kings.mp4")
+                  f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
+                  obamaColor, edit_no_show)
+    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+                  f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
+                  obamaColor, edit_no_show)
+    process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+                 "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+                 f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
+                  obamaColor, edit_no_show)
+    process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
+                  "../SourceVideos/Robin_Singing_video.mp4",
+                  f"output/Robin_Singing_video_{timestamp}.mp4",
+                  obamaColor, edit_no_show)
+    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+                  "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+                  f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
+                  obamaColor, edit_no_show)
+    process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+                  "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+                  f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
+                  noEffectColor, allOff)
+    process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+                  "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+                  f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
+                  obamaColor, allOff)
+    process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
+                  "..\ArchiveVideos\Edison_speech,_1920s.mp4",
+                  f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
+                  noEffectColor, allOff)
+    process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+                  "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+                  f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
+                   obamaColor, allOff)
+    process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
+                  "..\ArchiveVideos\The_Dream_of_Kings.mp4",
+                  f"output\The_Dream_of_Kings_{timestamp}.mp4",
+                  noEffectColor, allOff)
 
 if __name__ == '__main__':
     main()

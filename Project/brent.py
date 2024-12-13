@@ -355,11 +355,11 @@ def main():
                   obamaColor,allOff)
     process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
                   "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-                  f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
+                  f"output\Edison_speech,_1920s_{timestamp}.mp4",
                   noEffectColor,allOff)
     process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-                  f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
+                  f"output\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
                   obamaColor,allOff)
     process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
