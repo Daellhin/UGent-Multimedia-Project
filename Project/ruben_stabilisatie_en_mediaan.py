@@ -560,11 +560,11 @@ def process_video(input_path, original, output_path, show_steps=False, show_proc
     cv2.destroyAllWindows()
 
 def main():
-
+    """
     process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "output/archive_2017-01-07_President_Obama's_Weekly_Address.mp4")
-    """
+
     process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",False)
@@ -580,26 +580,26 @@ def main():
     process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4")
-    
+
     process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   "output/Apollo_11_Landing_-_first_steps_on_the_moon.mp4")
-    
+
     process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   "output\Breakfast-at-tiffany-s-official®-trailer-hd.mp4")
     
     process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
                   "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-                  "output\ArchiveVideos\Edison_speech,_1920s.mp4")
-    
+                  "output\Edison_speech,_1920s.mp4")
+    """
     process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-                  "output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4")
-    
+                  "output\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4")
+
     process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "output\The_Dream_of_Kings.mp4")
-    """
+
 if __name__ == '__main__':
     main()
