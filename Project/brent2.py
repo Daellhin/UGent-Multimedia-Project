@@ -32,7 +32,6 @@ class Enablers():
 
 def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams ,show_steps=False) -> cv2.typing.MatLike:
     frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
-
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)

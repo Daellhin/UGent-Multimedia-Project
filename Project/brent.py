@@ -290,10 +290,11 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
         if enable.rek:
             frame = optimaliseer_kleurrek(frame)
         frameOut = color_adjust(frame, frameOrig,color_params, enable.show_color_steps)
-        mse, psnr, ssim = evaluate_frames(frame,frameOrig)
-        mse_list.append(mse)
-        psnr_list.append(psnr)
-        ssim_list.append(ssim)
+        if enable.evaluate:
+            mse, psnr, ssim = evaluate_frames(frame,frameOrig)
+            mse_list.append(mse)
+            psnr_list.append(psnr)
+            ssim_list.append(ssim)
         out.write(frameOut)
         eval_frame+=1
 
@@ -301,8 +302,8 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
             cv2.imshow('Processing Video', frameOut)
         if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    #print(mse_list,psnr_list,ssim_list)
-    print("MSE=",np.mean(mse_list)," PSNR=",np.mean(psnr_list)," SSIM=",np.mean(ssim_list))
+    if mse_list:
+        print("MSE=",np.mean(mse_list)," PSNR=",np.mean(psnr_list)," SSIM=",np.mean(ssim_list))
     # Release everything
     cap.release()
     out.release()
@@ -325,7 +326,7 @@ def main():
     noEffectColor = ColorParams()
     obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1/3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
     allOff = Enablers(show_processed_frame=True)
-    edit_no_show = Enablers(rek=True,show_processed_frame=True)
+    edit_no_show = Enablers(rek=True,show_processed_frame=True,evaluate=True)
     """process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
