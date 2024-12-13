@@ -8,21 +8,13 @@ from statistics import *
 from typing import Callable, Literal
 
 import cv2
-import matplotlib.pyplot as plt
 import noisereduce as nr
 import numpy as np
-import pywt
-import scipy
-import scipy.fft as fft
-import soundfile as sf
-from moviepy import AudioClip, AudioFileClip, VideoFileClip
-from scipy import fft, signal
-from scipy.interpolate import interp1d
+from moviepy import AudioFileClip, VideoFileClip
+from scipy import signal
 from scipy.io import wavfile
 from utils import *
 from visualisations import *
-
-show_images = True
 
 
 @dataclass
@@ -47,7 +39,7 @@ class ReduceNoiseFilters:
 
 
 def sterio_notch_filter(
-    stereo_audio: list[list[float]], fs: int, frequency: float, Q: float = 30.0, order=1
+    stereo_audio: list[list[float]], fs: int, frequency: float, Q: float = 30.0, order=1, debug=False
 ):
     """
     Removes a specific frequency using IIR notch filter
@@ -56,11 +48,15 @@ def sterio_notch_filter(
     """
     left_channel, right_channel = stereo_to_mono(stereo_audio)
 
-    b, a = signal.iirnotch(frequency, Q, fs)
+    b_cascade, a_cascade = signal.iirnotch(frequency, Q, fs)
+    b = reduce(np.convolve, [b_cascade] * order)
+    a = reduce(np.convolve, [a_cascade] * order)
 
-    for _ in range(order):
-        left_channel = signal.filtfilt(b, a, left_channel)
-        right_channel = signal.filtfilt(b, a, right_channel)
+    if(debug):
+        plot_notch_filter(b, a, fs, frequency, Q, order)
+
+    left_channel = signal.filtfilt(b, a, left_channel)
+    right_channel = signal.filtfilt(b, a, right_channel)
 
     return mono_to_stereo(left_channel, right_channel)
 
@@ -81,9 +77,9 @@ def stereo_butterworth_filter(
     nyquist = 0.5 * fs
     normalised_cutoff = cutoff / nyquist
     b, a = signal.butter(order, normalised_cutoff, btype=type)
-    
+
     if debug:
-        plot_butterworth_filter(b, a, fs, cutoff, order)
+        plot_lowpass_filter(b, a, fs, cutoff, order)
 
     filtered_left = signal.lfilter(b, a, left_channel)
     filtered_right = signal.lfilter(b, a, right_channel)
@@ -209,7 +205,7 @@ def apply_audio_filters(
     debug=False,
 ) -> list[list[float]]:
     filtered_audio_1 = reduce(
-        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.Q, f.order),
+        lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.Q, f.order, debug),
         notch_filters,
         audio_samples,
     )
@@ -225,45 +221,18 @@ def apply_audio_filters(
         reduce_noise_filters,
         filtered_audio_2,
     )
-    filtered_audio_3 = sterio_amplifie_audio(filtered_audio_3, amplification_factor)
+    filtered_audio_4 = sterio_amplifie_audio(filtered_audio_3, amplification_factor)
 
     if debug:
         show_stereo_spectrograms(
-            [filtered_audio_2],
+            [filtered_audio_3],
             fs,
             "Noise reduction Spectogram",
             end_time=5,
             log_scale=False,
         )
 
-    return filtered_audio_3
-
-
-def process_frame(
-    get_frame: Callable[[float], np.ndarray], time: float, frame_duration: float
-):
-    """
-    Process frame callback:
-    - use get_frame with time to get current frame
-    - use get_frame with multiple times to get multiple frames(much slower)
-    """
-    # -- Get frame(s) --
-    frame = get_frame(time)
-    # times = np.arange(0, 4) * frame_duration
-    # frames = list(map(get_frame, times))
-
-    # -- Modify frame --
-
-    # -- Debug images --
-    global show_images
-    if show_images:
-        im_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        cv2.imshow("Frame", im_bgr)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        cv2.destroyAllWindows()
-        show_images = not show_images
-
-    return frame
+    return filtered_audio_4
 
 
 def process_video(
@@ -332,7 +301,7 @@ def main():
     process_video(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
         "output/output_obama.mp4",
-        notch_filters=[NotchFilter(100, 1, 2)],
+        notch_filters=[NotchFilter(100, 30, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,

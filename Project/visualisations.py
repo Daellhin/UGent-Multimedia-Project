@@ -122,7 +122,7 @@ def show_spectrum(image, original_image, figure_name):
     plt.show()
 
 
-def plot_butterworth_filter(
+def plot_lowpass_filter(
     b: list[float], a: list[float], fs: int, cutoff: int, order: int
 ):
     # Generate frequency response
@@ -135,9 +135,33 @@ def plot_butterworth_filter(
     plt.grid(True)
     plt.xlabel("Frequency [Hz]")
     plt.ylabel("Amplitude [dB]")
-    plt.title(
-        f"Butterworth Lowpass Filter Frequency Response\nCutoff: {cutoff}Hz, Order: {order}"
-    )
+    plt.title(f"Lowpass Filter Frequency Response\nCutoff: {cutoff}Hz, Order: {order}")
     plt.axvline(cutoff, color="red", alpha=0.5)
     plt.axhline(-3, color="green", alpha=0.5)
+    plt.show()
+
+
+def plot_notch_filter(
+    b: list[float],
+    a: list[float],
+    fs: int,
+    frequency: int,
+    quality: int,
+    order: int,
+    xlim=10000,
+):
+    # Generate frequency response
+    freq, h = signal.freqz(b, a, fs=fs)
+
+    # Plot frequency response
+    plt.figure(figsize=(10, 4))
+    plt.plot(freq, 20 * np.log10(abs(h)))
+    plt.grid(True)
+    plt.xlim([0, xlim])
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Amplitude [dB]")
+    plt.title(
+        f"Notch Filter Frequency Response\nFrequency: {frequency}Hz, Quality: {quality}, Order: {order}"
+    )
+    plt.axvline(frequency, color="red", alpha=0.5)
     plt.show()
