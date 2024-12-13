@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
 from visualisations import *
-from brent2 import color_adjust
+from brent2 import color_adjust, evaluate_frames
 from brent2 import ColorParams, Enablers
 
 def getGaussian2D(shape:tuple[2],sigma:float,show=False) -> cv2.typing.MatLike:
@@ -289,7 +289,8 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
             break
         if enable.rek:
             frame = optimaliseer_kleurrek(frame)
-        frameOut, mse, psnr, ssim = color_adjust(frame, frameOrig,color_params,enable, enable.show_color_steps, enable.evaluate)
+        frameOut = color_adjust(frame, frameOrig,color_params, enable.show_color_steps)
+        mse, psnr, ssim = evaluate_frames(frame,frameOrig)
         mse_list.append(mse)
         psnr_list.append(psnr)
         ssim_list.append(ssim)
@@ -325,27 +326,29 @@ def main():
     obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1/3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
     allOff = Enablers(show_processed_frame=True)
     edit_no_show = Enablers(rek=True,show_processed_frame=True)
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+    """process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
                   obamaColor, edit_no_show)
+    femaleColor = ColorParams(3, 1080, 0, 0, 1/2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
     process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
+                  femaleColor, edit_no_show)
     process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
                   "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
                   f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
                   obamaColor, edit_no_show)
+    femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1)
     process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
                   "../SourceVideos/Robin_Singing_video.mp4",
                   f"output/Robin_Singing_video_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
+                  femaleColor, edit_no_show)"""
     process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
                   obamaColor, edit_no_show)
-    process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    """process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
                   noEffectColor,allOff)
@@ -364,7 +367,7 @@ def main():
     process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   f"output\The_Dream_of_Kings_{timestamp}.mp4",
-                  noEffectColor,allOff)
+                  noEffectColor,allOff)"""
 
 if __name__ == '__main__':
     main()

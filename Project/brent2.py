@@ -23,7 +23,6 @@ class ColorParams():
     ValueAdd :int = 0
     ValueMultiply :float = 1
 
-
 @dataclass
 class Enablers():
     rek :bool = False
@@ -31,7 +30,7 @@ class Enablers():
     show_processed_frame :bool = False
     evaluate :bool = False
 
-def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams,enable:Enablers ,show_steps=False,evaluate=False) -> tuple[cv2.typing.MatLike, float, float, float]:
+def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams ,show_steps=False) -> cv2.typing.MatLike:
     frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
 
     # YUV modifier - kringverzwakking
@@ -118,11 +117,10 @@ def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:C
         show_histogram(h, ho, "Hue", "Hue Original")
         show_histogram(v, vo, "Value", "Value Original")
         show_histogram(s, so, "Saturation", "Saturation Original")
+    return frame
 
-    if evaluate:
-        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
-        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
-        ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
-        # print(mse,psnr,ssim)
-        return frame, mse, psnr, ssim
-    return frame, -1, -1, -1
+def evaluate_frames(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike):
+    mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
+    psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
+    ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
+    return mse, psnr, ssim
