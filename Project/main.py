@@ -43,9 +43,8 @@ class Enablers():
     evaluate :bool = False
     stabilize : bool = False
 
-def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams,enable:Enablers ,show_steps=False,evaluate=False) -> tuple[cv2.typing.MatLike, float, float, float]:
+def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams ,show_steps=False) -> cv2.typing.MatLike:
     frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
-
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
@@ -130,14 +129,7 @@ def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:C
         show_histogram(h, ho, "Hue", "Hue Original")
         show_histogram(v, vo, "Value", "Value Original")
         show_histogram(s, so, "Saturation", "Saturation Original")
-
-    if evaluate:
-        mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
-        psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
-        ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
-        # print(mse,psnr,ssim)
-        return frame, mse, psnr, ssim
-    return frame, -1, -1, -1
+    return frame
 
 def optimaliseer_kleurrek(frame):
     # Splits de afbeelding in BGR-kanalen
@@ -351,6 +343,12 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
 
     return frame
 
+def evaluate_frames(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike):
+    mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
+    psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
+    ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
+    return mse, psnr, ssim
+
 def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, enable:Enablers):
     # Open the video file
     cap = cv2.VideoCapture(input_path)
@@ -378,20 +376,22 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
             break
         if enable.rek:
             frame = optimaliseer_kleurrek(frame)
-        frameOut, mse, psnr, ssim = color_adjust(frame, frameOrig,color_params,enable, enable.show_color_steps, enable.evaluate)
-        mse_list.append(mse)
-        psnr_list.append(psnr)
-        ssim_list.append(ssim)
+        frameOut = color_adjust(frame, frameOrig,color_params,enable.show_color_steps)
         frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
         out.write(frameOut)
+        if enable.evaluate and eval_frame%10:
+            mse, psnr, ssim = evaluate_frames(frame, frameOrig)
+            mse_list.append(mse)
+            psnr_list.append(psnr)
+            ssim_list.append(ssim)
         eval_frame+=1
 
         if enable.show_processed_frame:
             cv2.imshow('Processing Video', frameOut)
         if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    #print(mse_list,psnr_list,ssim_list)
-    print("MSE=",np.mean(mse_list)," PSNR=",np.mean(psnr_list)," SSIM=",np.mean(ssim_list))
+    if mse_list:
+        print("MSE=", np.mean(mse_list), " PSNR=", np.mean(psnr_list), " SSIM=", np.mean(ssim_list))
     # Release everything
     cap.release()
     out.release()
@@ -402,24 +402,26 @@ def main():
     noEffectColor = ColorParams()
     obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
     allOff = Enablers(show_processed_frame=True)
-    edit_no_show = Enablers(rek=True, show_processed_frame=True, stabilize=True)
+    edit_no_show = Enablers(rek=True, show_processed_frame=True, stabilize=True,evaluate=True)
     """process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
                   obamaColor, edit_no_show)
+    femaleColor = ColorParams(3, 1080, 0, 0, 1/2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
     process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
+                  femaleColor, edit_no_show)
     process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-                 "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-                 f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
+                  "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+                  f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
                   obamaColor, edit_no_show)
+    femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1)
     process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
                   "../SourceVideos/Robin_Singing_video.mp4",
                   f"output/Robin_Singing_video_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
-    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+                  femaleColor, edit_no_show)"""
+    """process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
                   obamaColor, edit_no_show)
