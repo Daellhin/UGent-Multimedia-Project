@@ -1,50 +1,53 @@
-import math
-import random
-from signal import signal
 import time
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 import scipy
-from PIL.ImageChops import multiply
-from matplotlib import pyplot as plt
-from scipy.io import wavfile
-import moviepy
-from visualisations import *
-from dataclasses import dataclass
 import skimage
+from matplotlib import pyplot as plt
 from scipy.optimize import minimize
+from visualisations import *
+
 
 @dataclass
-class ColorParams():
-    #eerste filter voor bewerking
-    FilterSize :int = 3
-    #kleuraanpassing met gausiaanse vorm (hoog aan randen)
-    GaussianSize :int = 1080
-    UGaussianAdjust :float = 0
-    VGaussianAdjust :float = 0
-    YGaussianAdjust :float = 0
-    #YUV-kleurcorrecties
-    UMultiply :float = 1
-    VMultiply :float = 1
-    YSubstract :int = 0
-    USubstract :int = 0
-    VSubstract :int = 0
-    #HSV-kleurcorrecties
-    SaturationAdd :int = 0
-    SaturationMultiply :float = 1
-    ValueAdd :int = 0
-    ValueMultiply :float = 1
+class ColorParams:
+    # eerste filter voor bewerking
+    FilterSize: int = 3
+    # kleuraanpassing met gausiaanse vorm (hoog aan randen)
+    GaussianSize: int = 1080
+    UGaussianAdjust: float = 0
+    VGaussianAdjust: float = 0
+    YGaussianAdjust: float = 0
+    # YUV-kleurcorrecties
+    UMultiply: float = 1
+    VMultiply: float = 1
+    YSubstract: int = 0
+    USubstract: int = 0
+    VSubstract: int = 0
+    # HSV-kleurcorrecties
+    SaturationAdd: int = 0
+    SaturationMultiply: float = 1
+    ValueAdd: int = 0
+    ValueMultiply: float = 1
+
 
 @dataclass
-class Enablers():
-    rek :bool = False
-    show_color_steps :bool = False
-    show_processed_frame :bool = False
-    evaluate :bool = False
-    stabilize : bool = False
+class Enablers:
+    rek: bool = False
+    show_color_steps: bool = False
+    show_processed_frame: bool = False
+    evaluate: bool = False
+    stabilize: bool = False
 
-def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:ColorParams ,show_steps=False) -> cv2.typing.MatLike:
-    frame = cv2.blur(frame,(params.FilterSize,params.FilterSize))
+
+def color_adjust(
+    frame: cv2.typing.MatLike,
+    frameOrig: cv2.typing.MatLike,
+    params: ColorParams,
+    show_steps=False,
+) -> cv2.typing.MatLike:
+    frame = cv2.blur(frame, (params.FilterSize, params.FilterSize))
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
     y, u, v = cv2.split(yuv)
@@ -67,7 +70,10 @@ def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:C
     if show_steps:
         plt.imshow(mask)
         plt.show()
-    y = cv2.multiply(y.astype(np.float64), 1 - params.YGaussianAdjust / 2 + params.YGaussianAdjust * mask)
+    y = cv2.multiply(
+        y.astype(np.float64),
+        1 - params.YGaussianAdjust / 2 + params.YGaussianAdjust * mask,
+    )
     u = cv2.multiply(u.astype(np.float64), 1 + params.UGaussianAdjust * mask)
     v = cv2.multiply(v.astype(np.float64), 1 + params.VGaussianAdjust * mask)
     y = cv2.subtract(y, params.YSubstract)
@@ -113,7 +119,7 @@ def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:C
 
     v = cv2.multiply(v, params.ValueMultiply)
     v = cv2.add(v, params.ValueAdd)
-    s = cv2.multiply(s,params.SaturationMultiply)
+    s = cv2.multiply(s, params.SaturationMultiply)
     s = cv2.add(s, params.SaturationAdd)
 
     h = np.clip(h, 0, 255).astype(np.uint8)
@@ -131,6 +137,7 @@ def color_adjust(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike,params:C
         show_histogram(s, so, "Saturation", "Saturation Original")
     return frame
 
+
 def optimaliseer_kleurrek(frame):
     # Splits de afbeelding in BGR-kanalen
     b, g, r = cv2.split(frame)
@@ -142,22 +149,32 @@ def optimaliseer_kleurrek(frame):
     def radial_shift_map(shape, scale_factor, power=1.0):
         """Maak een verschuivingskaart op basis van een radiale functie."""
         h, w = shape
-        y, x = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        y, x = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
         dx = x - center_x
         dy = y - center_y
-        r = np.sqrt(dx ** 2 + dy ** 2) + 1e-8  # Voeg kleine waarde toe om deling door 0 te vermijden
+        r = (
+            np.sqrt(dx**2 + dy**2) + 1e-8
+        )  # Voeg kleine waarde toe om deling door 0 te vermijden
         # Bereken de verschuiving
-        shift_x = scale_factor * (dx / r) * (r ** power)
-        shift_y = scale_factor * (dy / r) * (r ** power)
+        shift_x = scale_factor * (dx / r) * (r**power)
+        shift_y = scale_factor * (dy / r) * (r**power)
         return shift_x, shift_y
 
     # Corrigeer een kanaal
     def apply_radial_shift(channel, shift_x, shift_y):
         """Pas de verschuivingen toe op een kleurkanaal."""
-        map_x, map_y = np.meshgrid(np.arange(channel.shape[1]), np.arange(channel.shape[0]))
+        map_x, map_y = np.meshgrid(
+            np.arange(channel.shape[1]), np.arange(channel.shape[0])
+        )
         map_x = (map_x - shift_x).astype(np.float32)
         map_y = (map_y - shift_y).astype(np.float32)
-        corrected = cv2.remap(channel, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        corrected = cv2.remap(
+            channel,
+            map_x,
+            map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+        )
         return corrected
 
     # Parameters voor verschuivingen
@@ -177,6 +194,7 @@ def optimaliseer_kleurrek(frame):
 
     return aligned_image
 
+
 def create_gaussian_kernel(size=15, sigma=3):
     """Create a 2D Gaussian kernel."""
     x = np.linspace(-size // 2, size // 2, size)
@@ -185,7 +203,8 @@ def create_gaussian_kernel(size=15, sigma=3):
     kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
     return kernel / kernel.sum()
 
-def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
+
+def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
 
     def stabiliseer_frames(img1, img2):
         # Convert images to grayscale for feature detection
@@ -212,20 +231,24 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
         good_matches = matches[:40]
 
         # Extract matched keypoints
-        src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+        src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(
+            -1, 1, 2
+        )
+        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(
+            -1, 1, 2
+        )
 
         # Estimate translation matrix
         translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts)
 
         # Apply translation to the color image
-        #aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
+        # aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
 
         aligned_img2 = cv2.warpAffine(
             img2,
             translation_matrix,
             (img1.shape[1], img1.shape[0]),
-            borderMode=cv2.BORDER_REPLICATE  # Herhaalt de randpixels
+            borderMode=cv2.BORDER_REPLICATE,  # Herhaalt de randpixels
         )
 
         return aligned_img2, translation_matrix
@@ -245,23 +268,38 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
             b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = params
 
             # Verschuif kleurkanalen
-            b_aligned = cv2.warpAffine(source_channels[0], np.float32([[1, 0, b_dx], [0, 1, b_dy]]),
-                                       (target_channels[0].shape[1], target_channels[0].shape[0]))
-            g_aligned = cv2.warpAffine(source_channels[1], np.float32([[1, 0, g_dx], [0, 1, g_dy]]),
-                                       (target_channels[1].shape[1], target_channels[1].shape[0]))
-            r_aligned = cv2.warpAffine(source_channels[2], np.float32([[1, 0, r_dx], [0, 1, r_dy]]),
-                                       (target_channels[2].shape[1], target_channels[2].shape[0]))
+            b_aligned = cv2.warpAffine(
+                source_channels[0],
+                np.float32([[1, 0, b_dx], [0, 1, b_dy]]),
+                (target_channels[0].shape[1], target_channels[0].shape[0]),
+            )
+            g_aligned = cv2.warpAffine(
+                source_channels[1],
+                np.float32([[1, 0, g_dx], [0, 1, g_dy]]),
+                (target_channels[1].shape[1], target_channels[1].shape[0]),
+            )
+            r_aligned = cv2.warpAffine(
+                source_channels[2],
+                np.float32([[1, 0, r_dx], [0, 1, r_dy]]),
+                (target_channels[2].shape[1], target_channels[2].shape[0]),
+            )
 
             # Bereken verschil tussen gealigneerde en doel-kanalen
-            diff = np.abs(target_channels[0].astype(float) - b_aligned.astype(float)) + \
-                   np.abs(target_channels[1].astype(float) - g_aligned.astype(float)) + \
-                   np.abs(target_channels[2].astype(float) - r_aligned.astype(float))
+            diff = (
+                np.abs(target_channels[0].astype(float) - b_aligned.astype(float))
+                + np.abs(target_channels[1].astype(float) - g_aligned.astype(float))
+                + np.abs(target_channels[2].astype(float) - r_aligned.astype(float))
+            )
             return np.mean(diff)
 
         # Initiële verschuivingen vinden
         initial_shifts = [0, 0, 0, 0, 0, 0]
-        res = minimize(calculate_alignment_error, initial_shifts, args=([b1, g1, r1], [b2, g2, r2]),
-                       method='Nelder-Mead')
+        res = minimize(
+            calculate_alignment_error,
+            initial_shifts,
+            args=([b1, g1, r1], [b2, g2, r2]),
+            method="Nelder-Mead",
+        )
         b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = res.x
 
         # Bereken transformatiematrices
@@ -270,12 +308,24 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
         r_matrix = np.float32([[1, 0, r_dx], [0, 1, r_dy]])
 
         # Transformeer kleurkanalen
-        b_aligned = cv2.warpAffine(b2, b_matrix, (prev_frame.shape[1], prev_frame.shape[0]),
-                                   borderMode=cv2.BORDER_REPLICATE)
-        g_aligned = cv2.warpAffine(g2, g_matrix, (prev_frame.shape[1], prev_frame.shape[0]),
-                                   borderMode=cv2.BORDER_REPLICATE)
-        r_aligned = cv2.warpAffine(r2, r_matrix, (prev_frame.shape[1], prev_frame.shape[0]),
-                                   borderMode=cv2.BORDER_REPLICATE)
+        b_aligned = cv2.warpAffine(
+            b2,
+            b_matrix,
+            (prev_frame.shape[1], prev_frame.shape[0]),
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+        g_aligned = cv2.warpAffine(
+            g2,
+            g_matrix,
+            (prev_frame.shape[1], prev_frame.shape[0]),
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+        r_aligned = cv2.warpAffine(
+            r2,
+            r_matrix,
+            (prev_frame.shape[1], prev_frame.shape[0]),
+            borderMode=cv2.BORDER_REPLICATE,
+        )
 
         # Recombineer kleurkanalen
         aligned_and_stabilized = cv2.merge([b_aligned, g_aligned, r_aligned])
@@ -289,15 +339,18 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
             gray = frame
 
         gray = cv2.bitwise_not(gray)
-        bw = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                   cv2.THRESH_BINARY, 15, -2)
+        bw = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2
+        )
 
         vertical = np.copy(bw)
 
         rows = vertical.shape[0]
         vertical_size = rows // 30
 
-        verticalStructure = cv2.getStructuringElement(cv2.MORPH_RECT, (1, vertical_size))
+        verticalStructure = cv2.getStructuringElement(
+            cv2.MORPH_RECT, (1, vertical_size)
+        )
 
         vertical = cv2.erode(vertical, verticalStructure)
         vertical = cv2.dilate(vertical, verticalStructure)
@@ -308,7 +361,7 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
 
     def mediaan_filter_op_frame_basis(frame):
         # If this is the first frame in the sequence, initialize frames
-        if not hasattr(stabiliseer_en_mediaan_frame, 'frames'):
+        if not hasattr(stabiliseer_en_mediaan_frame, "frames"):
             stabiliseer_en_mediaan_frame.frames = [frame] * 4
 
         # frame, translation_matrix = stabiliseer_frames(process_frame.frames[-1],frame)
@@ -330,10 +383,16 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
         frame = verwijder_lijnen(frame)
 
         if enable.stabilize:
-            frame = align_and_stabilize_frame(stabiliseer_en_mediaan_frame.frames[-1], frame)
-            frame, _ = stabiliseer_frames(stabiliseer_en_mediaan_frame.frames[-1], frame)
+            frame = align_and_stabilize_frame(
+                stabiliseer_en_mediaan_frame.frames[-1], frame
+            )
+            frame, _ = stabiliseer_frames(
+                stabiliseer_en_mediaan_frame.frames[-1], frame
+            )
 
-        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [frame]
+        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[
+            1:
+        ] + [frame]
 
         # Calculate median of last 4 frames
         stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
@@ -343,14 +402,25 @@ def stabiliseer_en_mediaan_frame(frame:cv2.typing.MatLike, enable:Enablers):
 
     return frame
 
-def evaluate_frames(frame:cv2.typing.MatLike, frameOrig:cv2.typing.MatLike):
+
+def evaluate_frames(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike):
     mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
     psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
-    ssim = skimage.metrics.structural_similarity(frameOrig, frame, channel_axis=-1)  # naar 1!
+    ssim = skimage.metrics.structural_similarity(
+        frameOrig, frame, channel_axis=-1
+    )  # naar 1!
     return mse, psnr, ssim
 
-def process_video(input_path:str,original:str, output_path:str,color_params:ColorParams, enable:Enablers):
-    # Open the video file
+
+def process_video(
+    input_path: str,
+    original: str,
+    output_path: str,
+    color_params: ColorParams,
+    enable: Enablers,
+):
+    # Open the video files
+    check_if_files_exist([input_path, original])
     cap = cv2.VideoCapture(input_path)
     capOrig = cv2.VideoCapture(original)
 
@@ -359,10 +429,12 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print(f"Processing {input_path} with {frame_count} frames of {frame_width}x{frame_height} at {fps} frames/second")
+    print(
+        f"Processing '{input_path}' with {frame_count} frames of {frame_width}x{frame_height} at {fps} frames/second"
+    )
 
     # Create VideoWriter object
-    fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
+    fourcc = cv2.VideoWriter.fourcc("m", "p", "4", "v")
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
     eval_frame = 0
@@ -376,82 +448,138 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
             break
         if enable.rek:
             frame = optimaliseer_kleurrek(frame)
-        frameOut = color_adjust(frame, frameOrig,color_params,enable.show_color_steps)
+        frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
         frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
         out.write(frameOut)
-        if enable.evaluate and eval_frame%10:
+        if enable.evaluate and eval_frame % 10:
             mse, psnr, ssim = evaluate_frames(frame, frameOrig)
             mse_list.append(mse)
             psnr_list.append(psnr)
             ssim_list.append(ssim)
-        eval_frame+=1
+        eval_frame += 1
 
         if enable.show_processed_frame:
-            cv2.imshow('Processing Video', frameOut)
-        if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord('q'):
+            cv2.imshow("Processing Video", frameOut)
+        if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     # Leeg de frame buffer voor de nieuwe video
-    if hasattr(stabiliseer_en_mediaan_frame, 'frames'):
-        delattr(stabiliseer_en_mediaan_frame, 'frames')
+    if hasattr(stabiliseer_en_mediaan_frame, "frames"):
+        delattr(stabiliseer_en_mediaan_frame, "frames")
 
     if mse_list:
-        print("MSE=", np.mean(mse_list), " PSNR=", np.mean(psnr_list), " SSIM=", np.mean(ssim_list))
+        print(
+            "MSE=",
+            np.mean(mse_list),
+            " PSNR=",
+            np.mean(psnr_list),
+            " SSIM=",
+            np.mean(ssim_list),
+        )
     # Release everything
     cap.release()
     out.release()
     cv2.destroyAllWindows()
 
-def main():
-    timestamp = time.strftime("%d-%m-%Y_%H%M%S")
-    noEffectColor = ColorParams()
-    obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
-    allOff = Enablers(show_processed_frame=True)
-    edit_no_show = Enablers(rek=True, show_processed_frame=True, stabilize=True,evaluate=True)
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-                  f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
-    femaleColor = ColorParams(3, 1080, 0, 0, 1/2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
-    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-                  f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
-                  femaleColor, edit_no_show)
-    process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-                  "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-                  f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
-    femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1)
-    process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
-                  "../SourceVideos/Robin_Singing_video.mp4",
-                  f"output/Robin_Singing_video_{timestamp}.mp4",
-                  femaleColor, edit_no_show)
-    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-                  "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-                  f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
-                  obamaColor, edit_no_show)
-    process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-                  "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-                  f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
-                  noEffectColor, allOff)
-    archive = ColorParams(3, 1080//2, 0, 0, 2/3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
-    process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-                  "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-                  f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
-                  archive, allOff)
-    process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
-                  "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-                  f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
-                  noEffectColor, allOff)
-    archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
-    process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-                  "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-                  f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
-                   archive, allOff)
-    process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
-                  "..\ArchiveVideos\The_Dream_of_Kings.mp4",
-                  f"output\The_Dream_of_Kings_{timestamp}.mp4",
-                  noEffectColor, allOff)
 
-if __name__ == '__main__':
+def main():
+    # -- Startup --
+    start_time = time.time()
+    timestamp = time.strftime("%d-%m-%Y_%H%M%S")
+
+    # -- Configuration --
+    noEffectColor = ColorParams()
+    obamaColor = ColorParams(
+        3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1
+    )
+    allOff = Enablers(show_processed_frame=True)
+    edit_no_show = Enablers(
+        rek=True, show_processed_frame=True, stabilize=True, evaluate=True
+    )
+
+    # -- Video Processing --
+    process_video(
+        "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+        "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
+        f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
+        obamaColor,
+        edit_no_show,
+    )
+    # femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
+    # process_video(
+    #     "../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #     "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #     f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
+    #     femaleColor,
+    #     edit_no_show,
+    # )
+    # process_video(
+    #     "../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #     "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #     f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
+    #     obamaColor,
+    #     edit_no_show,
+    # )
+    # femaleColor = ColorParams(
+    #     3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1
+    # )
+    # process_video(
+    #     "../DegradedVideos/archive_Robin_Singing_video.mp4",
+    #     "../SourceVideos/Robin_Singing_video.mp4",
+    #     f"output/Robin_Singing_video_{timestamp}.mp4",
+    #     femaleColor,
+    #     edit_no_show,
+    # )
+    # process_video(
+    #     "../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #     "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #     f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
+    #     obamaColor,
+    #     edit_no_show,
+    # )
+    # process_video(
+    #     "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    #     "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    #     f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
+    #     noEffectColor,
+    #     allOff,
+    # )
+    # archive = ColorParams(3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
+    # process_video(
+    #     "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+    #     "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+    #     f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
+    #     archive,
+    #     allOff,
+    # )
+    # process_video(
+    #     "..\ArchiveVideos\Edison_speech,_1920s.mp4",
+    #     "..\ArchiveVideos\Edison_speech,_1920s.mp4",
+    #     f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
+    #     noEffectColor,
+    #     allOff,
+    # )
+    # archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
+    # process_video(
+    #     "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+    #     "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+    #     f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
+    #     archive,
+    #     allOff,
+    # )
+    # process_video(
+    #     "..\ArchiveVideos\The_Dream_of_Kings.mp4",
+    #     "..\ArchiveVideos\The_Dream_of_Kings.mp4",
+    #     f"output\The_Dream_of_Kings_{timestamp}.mp4",
+    #     noEffectColor,
+    #     allOff,
+    # )
+
+    # -- Shutdown --
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f"Video processing completed in {execution_time:.2f} seconds")
+
+
+if __name__ == "__main__":
     main()
