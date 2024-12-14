@@ -7,6 +7,7 @@ import scipy
 import skimage
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
+from tqdm import tqdm
 from visualisations import *
 
 
@@ -441,15 +442,20 @@ def process_video(
     mse_list = []
     psnr_list = []
     ssim_list = []
-    while cap.isOpened() and capOrig.isOpened():
+
+    for _ in tqdm(range(frame_count), desc="Processing video"):
         ret, frame = cap.read()
         ret, frameOrig = capOrig.read()
         if not ret:
             break
+
+        # -- Process frame --
         if enable.rek:
             frame = optimaliseer_kleurrek(frame)
         frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
         frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
+
+        # -- Output frame --
         out.write(frameOut)
         if enable.evaluate and eval_frame % 10:
             mse, psnr, ssim = evaluate_frames(frame, frameOrig)
@@ -494,7 +500,7 @@ def main():
     )
     allOff = Enablers(show_processed_frame=True)
     edit_no_show = Enablers(
-        rek=True, show_processed_frame=True, stabilize=True, evaluate=True
+        rek=True, show_processed_frame=False, stabilize=True, evaluate=True
     )
 
     # -- Video Processing --
