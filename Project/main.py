@@ -40,6 +40,7 @@ class Enablers:
     show_processed_frame: bool = False
     evaluate: bool = False
     stabilize: bool = False
+    remove_vertical_lines: bool = False
 
 
 def color_adjust(
@@ -350,13 +351,13 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
         vertical_size = rows // 30
 
         verticalStructure = cv2.getStructuringElement(
-            cv2.MORPH_RECT, (1, vertical_size)
+            cv2.MORPH_RECT, (3, vertical_size)
         )
 
-        vertical = cv2.erode(vertical, verticalStructure)
-        vertical = cv2.dilate(vertical, verticalStructure)
+        vertical = cv2.erode(vertical, verticalStructure, iterations=5)
+        vertical = cv2.dilate(vertical, verticalStructure, iterations=5)
 
-        frame = cv2.inpaint(frame, vertical, 5, cv2.INPAINT_TELEA)
+        frame = cv2.inpaint(frame, vertical, 15, cv2.INPAINT_TELEA)
 
         return frame
 
@@ -375,13 +376,13 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
 
         # frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
 
-        frame = verwijder_lijnen(frame)
-        b, g, r = cv2.split(frame)
-        b = scipy.ndimage.median_filter(b, (1, 5))
-        g = scipy.ndimage.median_filter(g, (1, 5))
-        r = scipy.ndimage.median_filter(r, (1, 5))
-        frame = cv2.merge((b, g, r))
-        frame = verwijder_lijnen(frame)
+        if enable.remove_vertical_lines:
+            frame = verwijder_lijnen(frame)
+            b, g, r = cv2.split(frame)
+            b = scipy.ndimage.median_filter(b, (1, 5))
+            g = scipy.ndimage.median_filter(g, (1, 5))
+            r = scipy.ndimage.median_filter(r, (1, 5))
+            frame = cv2.merge((b, g, r))
 
         if enable.stabilize:
             frame = align_and_stabilize_frame(
@@ -391,9 +392,7 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
                 stabiliseer_en_mediaan_frame.frames[-1], frame
             )
 
-        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[
-            1:
-        ] + [frame]
+        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [frame]
 
         # Calculate median of last 4 frames
         stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
@@ -573,6 +572,7 @@ def main():
     #     archive,
     #     allOff,
     # )
+    # removeLines = Enablers(show_processed_frame=True, remove_vertical_lines=True)
     # process_video(
     #     "..\ArchiveVideos\The_Dream_of_Kings.mp4",
     #     "..\ArchiveVideos\The_Dream_of_Kings.mp4",
