@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import reduce
 from math import *
 from statistics import *
-from typing import Callable, Literal
+from typing import Literal
 
 import cv2
 import noisereduce as nr
@@ -241,69 +241,6 @@ def apply_audio_filters(
     return filtered_audio_4
 
 
-def process_video(
-    input_path: str,
-    output_path="output/output.mp4",
-    input_path_original: str = None,
-    notch_filters: list[NotchFilter] = [],
-    butterworth_filters: list[ButterworthFilters] = [],
-    reduce_noise_filters: list = [],
-    amplification_factor=1.0,
-    debug=False,
-    output_video=True,
-):
-    print("-- Processing: ", input_path)
-
-    # -- Video processing --
-    video_original = VideoFileClip(input_path)
-    print(f"Processing video (s={video_original.duration})")
-    processed_video = video_original
-
-    # -- Audio processing --
-    # Load audio
-    audio = video_original.audio
-    fs = audio.fps
-    print(f"Loading audio frames (fs={fs}) (s={audio.duration})")
-    audio_samples: list[list[float]] = list(audio.to_soundarray())
-
-    # Process audio
-    print(f"Applying audio filters")
-    processed_audio = apply_audio_filters(
-        audio_samples,
-        fs,
-        notch_filters,
-        butterworth_filters,
-        reduce_noise_filters,
-        amplification_factor,
-        debug,
-    )
-
-    # Audio output
-    audio_path = f"{output_path}.wav"
-    print(f"Writing audio to:", audio_path)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
-
-    if input_path_original:
-        video_original = VideoFileClip(input_path_original)
-        audio_2 = VideoFileClip(input_path).audio
-        audio_original = video_original.audio
-        fs_original = audio_original.fps
-        print(
-            f"Loading original audio frames (fs={fs_original}) (s={audio_original.duration})"
-        )
-
-        audio_samples_original: list[list[float]] = list(audio_original.to_soundarray())
-        compare_audio(audio_samples_original, audio_samples, processed_audio)
-
-    if output_video:
-        # -- Combine video and audio --
-        t = AudioFileClip(audio_path)
-        result: VideoFileClip = processed_video.with_audio(t)
-
-        # -- Output results --
-        result.write_videofile(output_path)
-
 def compare_audio(
     audio_samples_orig: list[list[float]],
     audio_samples_degr: list[list[float]],
@@ -340,11 +277,69 @@ def compare_audio(
     return (mse_degr, mse_proc), (psnr_degr, psnr_proc)
 
 
+def process_audio(
+    input_path: str,
+    output_path="output/output.mp4",
+    input_path_original: str = None,
+    notch_filters: list[NotchFilter] = [],
+    butterworth_filters: list[ButterworthFilters] = [],
+    reduce_noise_filters: list = [],
+    amplification_factor=1.0,
+    debug=False,
+):
+    print("-- Processing audio of: ", input_path)
+
+    # Load audio
+    audio = AudioFileClip(input_path)
+    fs = audio.fps
+    print(f"Loading audio frames (fs={fs}) (s={audio.duration})")
+    audio_samples: list[list[float]] = list(audio.to_soundarray())
+
+    # Process audio
+    print(f"Applying audio filters: ")
+    processed_audio = apply_audio_filters(
+        audio_samples,
+        fs,
+        notch_filters,
+        butterworth_filters,
+        reduce_noise_filters,
+        amplification_factor,
+        debug,
+    )
+
+    # Audio output
+    audio_path = f"{output_path}.wav"
+    print(f"Writing audio to:", audio_path)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
+
+    if input_path_original:
+        audio_original = AudioFileClip(input_path_original)
+        fs_original = audio_original.fps
+        print(
+            f"Loading original audio frames (fs={fs_original}) (s={audio_original.duration})"
+        )
+
+        audio_samples_original: list[list[float]] = list(audio_original.to_soundarray())
+        compare_audio(audio_samples_original, audio_samples, processed_audio)
+
+    return AudioFileClip(audio_path)
+
+
+def combine_audio_with_video(
+    audio: AudioFileClip, video: VideoFileClip, output_path: str
+):
+    print("-- Combining audio and video: ", audio.filename, video.filename)
+    # -- Combine video and audio --
+    result: VideoFileClip = video.with_audio(audio)
+    result.write_videofile(output_path)
+
+
 def main():
     start_time = time.time()
     debug = False
     # -- Degraded videos --
-    process_video(
+    processed_audio = process_audio(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
         "output/output_obama.mp4",
         "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
@@ -352,8 +347,7 @@ def main():
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
-        debug=False,
-        output_video=False,
+        debug=debug,
     )
     # process_video(
     #     "DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
@@ -431,7 +425,7 @@ def main():
 
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"Video processing completed in {execution_time:.2f} seconds")
+    print(f"Audio processing completed in {execution_time:.2f} seconds")
 
 
 if __name__ == "__main__":

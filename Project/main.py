@@ -1,10 +1,12 @@
 import time
 from dataclasses import dataclass
+from multiprocessing.dummy import Pool as ThreadPool
 
 import cv2
 import numpy as np
 import scipy
 import skimage
+from lorin import *
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from tqdm import tqdm
@@ -35,11 +37,12 @@ class ColorParams:
 
 @dataclass
 class Enablers:
-    rek: bool = False
+    kleurrek: bool = False
     show_color_steps: bool = False
     show_processed_frame: bool = False
     evaluate: bool = False
     stabilize: bool = False
+    debug_audio: bool = False
 
 
 def color_adjust(
@@ -139,44 +142,41 @@ def color_adjust(
     return frame
 
 
+def radial_shift_map(shape, scale_factor, power=1.0):
+    """Maak een verschuivingskaart op basis van een radiale functie."""
+    # Definieer het centrum van de afbeelding (assumeer centraal)
+    height, width = shape
+    y, x = np.meshgrid(np.arange(height), np.arange(width), indexing="ij")
+    center_x, center_y = width // 2, height // 2
+    dx = x - center_x
+    dy = y - center_y
+    r = (
+        np.sqrt(dx**2 + dy**2) + 1e-8
+    )  # Voeg kleine waarde toe om deling door 0 te vermijden
+    # Bereken de verschuiving
+    shift_x = scale_factor * (dx / r) * (r**power)
+    shift_y = scale_factor * (dy / r) * (r**power)
+    return shift_x, shift_y
+
+
+def apply_radial_shift(channel, shift_x, shift_y):
+    """Pas de verschuivingen toe op een kleurkanaal."""
+    map_x, map_y = np.meshgrid(np.arange(channel.shape[1]), np.arange(channel.shape[0]))
+    map_x = (map_x - shift_x).astype(np.float32)
+    map_y = (map_y - shift_y).astype(np.float32)
+    corrected = cv2.remap(
+        channel,
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+    )
+    return corrected
+
+
 def optimaliseer_kleurrek(frame):
     # Splits de afbeelding in BGR-kanalen
     b, g, r = cv2.split(frame)
-
-    # Definieer het centrum van de afbeelding (assumeer centraal)
-    height, width = g.shape
-    center_x, center_y = width // 2, height // 2
-
-    def radial_shift_map(shape, scale_factor, power=1.0):
-        """Maak een verschuivingskaart op basis van een radiale functie."""
-        h, w = shape
-        y, x = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
-        dx = x - center_x
-        dy = y - center_y
-        r = (
-            np.sqrt(dx**2 + dy**2) + 1e-8
-        )  # Voeg kleine waarde toe om deling door 0 te vermijden
-        # Bereken de verschuiving
-        shift_x = scale_factor * (dx / r) * (r**power)
-        shift_y = scale_factor * (dy / r) * (r**power)
-        return shift_x, shift_y
-
-    # Corrigeer een kanaal
-    def apply_radial_shift(channel, shift_x, shift_y):
-        """Pas de verschuivingen toe op een kleurkanaal."""
-        map_x, map_y = np.meshgrid(
-            np.arange(channel.shape[1]), np.arange(channel.shape[0])
-        )
-        map_x = (map_x - shift_x).astype(np.float32)
-        map_y = (map_y - shift_y).astype(np.float32)
-        corrected = cv2.remap(
-            channel,
-            map_x,
-            map_y,
-            interpolation=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_CONSTANT,
-        )
-        return corrected
 
     # Parameters voor verschuivingen
     scale_factor_red = 0.004  # Pas aan op basis van quiver-plot of experimenten
@@ -328,10 +328,7 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
             borderMode=cv2.BORDER_REPLICATE,
         )
 
-        # Recombineer kleurkanalen
-        aligned_and_stabilized = cv2.merge([b_aligned, g_aligned, r_aligned])
-
-        return aligned_and_stabilized
+        return cv2.merge([b_aligned, g_aligned, r_aligned])
 
     def verwijder_lijnen(frame):
         if len(frame.shape) != 2:
@@ -431,7 +428,7 @@ def process_video(
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     print(
-        f"Processing '{input_path}' with {frame_count} frames of {frame_width}x{frame_height} at {fps} frames/second"
+        f"-- Processing video: '{input_path}' with {frame_count} frames of {frame_width}x{frame_height} at {fps} fps"
     )
 
     # Create VideoWriter object
@@ -443,32 +440,35 @@ def process_video(
     psnr_list = []
     ssim_list = []
 
-    for _ in tqdm(range(frame_count), desc="Processing video"):
-        ret, frame = cap.read()
-        ret, frameOrig = capOrig.read()
-        if not ret:
-            break
+    for _ in tqdm(range(frame_count), desc="Progress"):
+        # frame, frameOrig = threadpool.map(lambda e: e.read()[1], [cap, capOrig]) # not faster
+        ok, frame = cap.read()
+        if not ok:
+            print("Frame not read")
+        # _, frameOrig = capOrig.read()
 
         # -- Process frame --
-        if enable.rek:
-            frame = optimaliseer_kleurrek(frame)
-        frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
-        frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
+        # if enable.rek:
+        #     frame = optimaliseer_kleurrek(frame)
+        # frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
+        # frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
+        frameOut = frame
 
         # -- Output frame --
         out.write(frameOut)
-        if enable.evaluate and eval_frame % 10:
-            mse, psnr, ssim = evaluate_frames(frame, frameOrig)
-            mse_list.append(mse)
-            psnr_list.append(psnr)
-            ssim_list.append(ssim)
-        eval_frame += 1
+        # if enable.evaluate and eval_frame % 10:
+        #     mse, psnr, ssim = evaluate_frames(frame, frameOrig)
+        #     mse_list.append(mse)
+        #     psnr_list.append(psnr)
+        #     ssim_list.append(ssim)
+        # eval_frame += 1
 
         if enable.show_processed_frame:
             cv2.imshow("Processing Video", frameOut)
         if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord("q"):
             break
-
+    cap.get
+    print(f"Writen video to:", output_path)
     # Leeg de frame buffer voor de nieuwe video
     if hasattr(stabiliseer_en_mediaan_frame, "frames"):
         delattr(stabiliseer_en_mediaan_frame, "frames")
@@ -484,8 +484,46 @@ def process_video(
         )
     # Release everything
     cap.release()
+    capOrig.release()
     out.release()
     cv2.destroyAllWindows()
+    return VideoFileClip(output_path)
+
+
+def process_audio_and_video(
+    input_path: str,
+    input_path_original: str,
+    output_path: str,
+    color_params: ColorParams,
+    enablers: Enablers,
+    notch_filters: list[NotchFilter] = [],
+    butterworth_filters: list[ButterworthFilters] = [],
+    reduce_noise_filters: list = [],
+    amplification_factor=1.0,
+):
+    processed_video = process_video(
+        input_path,
+        input_path_original,
+        output_path,
+        color_params,
+        enablers,
+    )
+    processed_audio = process_audio(
+        input_path,
+        output_path,
+        input_path_original,
+        notch_filters,
+        butterworth_filters,
+        reduce_noise_filters,
+        amplification_factor,
+        enablers.debug_audio,
+    )
+    processed_video = VideoFileClip(output_path)
+    processed_audio = AudioFileClip(output_path + ".wav")
+    combine_audio_with_video(processed_audio, processed_video, output_path+".mp4")
+
+
+threadpool = ThreadPool(4)
 
 
 def main():
@@ -494,22 +532,27 @@ def main():
     timestamp = time.strftime("%d-%m-%Y_%H%M%S")
 
     # -- Configuration --
+    debug_audio = False
     noEffectColor = ColorParams()
     obamaColor = ColorParams(
         3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1
     )
-    allOff = Enablers(show_processed_frame=True)
+    allOff = Enablers()
     edit_no_show = Enablers(
-        rek=True, show_processed_frame=False, stabilize=True, evaluate=True
+        kleurrek=True, show_processed_frame=False, stabilize=True, evaluate=True
     )
 
     # -- Video Processing --
-    process_video(
+    process_audio_and_video(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
         "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-        f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
-        obamaColor,
-        edit_no_show,
+        f"output/output_obama-{timestamp}.mp4",
+        color_params=obamaColor,
+        enablers=allOff,
+        notch_filters=[NotchFilter(100, 30, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        amplification_factor=2.0,
     )
     # femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
     # process_video(
