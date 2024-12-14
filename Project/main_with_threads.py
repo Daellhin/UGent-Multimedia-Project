@@ -1,3 +1,5 @@
+import threading
+import os
 import math
 import random
 from signal import signal
@@ -402,56 +404,105 @@ def process_video(input_path:str,original:str, output_path:str,color_params:Colo
     out.release()
     cv2.destroyAllWindows()
 
+# Thread functie die 2 video's per keer verwerkt
+def thread_process_two_videos(video1, video2):
+    # Eerste video verwerken
+    process_video(
+        video1[0],
+        video1[1],
+        video1[2],
+        video1[3],
+        video1[4]
+    )
+
+    # Tweede video verwerken
+    if video2 is not None:
+        process_video(
+            video2[0],
+            video2[1],
+            video2[2],
+            video2[3],
+            video2[4]
+        )
+
 def main():
     timestamp = time.strftime("%d-%m-%Y_%H%M%S")
     noEffectColor = ColorParams()
     obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
     allOff = Enablers(show_processed_frame=True)
     edit_no_show = Enablers(rek=True, show_processed_frame=True, stabilize=True,evaluate=True)
-    process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+
+    video1 = ("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
                   "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
                   f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
                   obamaColor, edit_no_show)
     femaleColor = ColorParams(3, 1080, 0, 0, 1/2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
-    process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    video2 = ("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
                   f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
                   femaleColor, edit_no_show)
-    process_video("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    video3 = ("../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
                   "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
                   f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
                   obamaColor, edit_no_show)
-    femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1)
-    process_video("../DegradedVideos/archive_Robin_Singing_video.mp4",
+    video4 = ("../DegradedVideos/archive_Robin_Singing_video.mp4",
                   "../SourceVideos/Robin_Singing_video.mp4",
                   f"output/Robin_Singing_video_{timestamp}.mp4",
                   femaleColor, edit_no_show)
-    process_video("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    video5 = ("../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
                   f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
                   obamaColor, edit_no_show)
-    process_video("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    video6 = ("../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
                   f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
                   noEffectColor, allOff)
     archive = ColorParams(3, 1080//2, 0, 0, 2/3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
-    process_video("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+    video7 = ("..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
                   f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
                   archive, allOff)
-    process_video("..\ArchiveVideos\Edison_speech,_1920s.mp4",
+    video8 = ("..\ArchiveVideos\Edison_speech,_1920s.mp4",
                   "..\ArchiveVideos\Edison_speech,_1920s.mp4",
                   f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
                   noEffectColor, allOff)
-    archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
-    process_video("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+    video9 = ("..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
                   f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
                    archive, allOff)
-    process_video("..\ArchiveVideos\The_Dream_of_Kings.mp4",
+    video10 = ("..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   "..\ArchiveVideos\The_Dream_of_Kings.mp4",
                   f"output\The_Dream_of_Kings_{timestamp}.mp4",
                   noEffectColor, allOff)
+
+    # Lijst van alle video's die je wilt verwerken
+    #video_list = [video1, video2, video3, video4, video5, video6, video7, video8, video9, video10]
+    video_list = [video8, video9, video10]
+
+    # Threads aanmaken en starten
+    threads = []
+    for i in range(0, len(video_list), 2):
+        # Controleer of er genoeg video's zijn voor een paar
+        if i + 1 < len(video_list):
+            thread = threading.Thread(target=thread_process_two_videos, args=(
+                video_list[i],
+                video_list[i + 1]
+            ))
+        else:
+            # Als er een oneven aantal video's is, verwerk de laatste alleen
+            thread = threading.Thread(target=thread_process_two_videos, args=(
+                video_list[i],
+                None
+            ))
+
+        thread.start()
+        threads.append(thread)
+
+    # Wachten tot alle threads klaar zijn
+    for thread in threads:
+        thread.join()
+
+    print("Alle video's verwerkt!")
 
 if __name__ == '__main__':
     main()
