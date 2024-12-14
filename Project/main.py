@@ -250,7 +250,7 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
             img2,
             translation_matrix,
             (img1.shape[1], img1.shape[0]),
-            borderMode=cv2.BORDER_REPLICATE,  # Herhaalt de randpixels
+            borderMode=cv2.BORDER_REFLECT101  # Herhaalt de randpixels gespiegeld
         )
 
         return aligned_img2, translation_matrix
@@ -501,14 +501,17 @@ def main():
     edit_no_show = Enablers(
         rek=True, show_processed_frame=False, stabilize=True, evaluate=True
     )
+    edit_with_show = Enablers(
+        rek=True, show_processed_frame=True, stabilize=True, evaluate=True
+    )
 
     # -- Video Processing --
     process_video(
-        "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-        "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
+        "../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
+        "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
         f"output/2017-01-07_President_Obama's_Weekly_Address_{timestamp}.mp4",
         obamaColor,
-        edit_no_show,
+        edit_with_show,
     )
     # femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
     # process_video(
