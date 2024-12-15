@@ -46,6 +46,11 @@ class Enablers:
     remove_vertical_lines: bool = False
 
 
+# Pre defined dataclasses
+noEffectColor = ColorParams()
+allOff = Enablers()
+
+
 def color_adjust(
     frame: cv2.typing.MatLike,
     frameOrig: cv2.typing.MatLike,
@@ -495,10 +500,10 @@ def process_video(
 
 def process_audio_and_video(
     input_path: str,
-    input_path_original: str,
     output_filename: str,
-    color_params: ColorParams,
-    enablers: Enablers,
+    input_path_original: str = None,
+    color_params: ColorParams = noEffectColor,
+    enablers: Enablers = allOff,
     notch_filters: list[NotchFilter] = [],
     butterworth_filters: list[ButterworthFilters] = [],
     reduce_noise_filters: list = [],
@@ -506,7 +511,7 @@ def process_audio_and_video(
 ):
     processed_video = process_video(
         input_path,
-        input_path_original,
+        input_path_original if input_path_original else input_path,
         "output-temp/" + output_filename,
         color_params,
         enablers,
@@ -536,12 +541,9 @@ def main():
     timestamp = time.strftime("%d-%m-%Y_%H%M%S")
 
     # -- Configuration --
-    debug_audio = False
-    noEffectColor = ColorParams()
     obamaColor = ColorParams(
         3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1
     )
-    allOff = Enablers()
     edit_no_show = Enablers(
         kleurrek=True, show_processed_frame=False, stabilize=True, evaluate=True
     )
@@ -550,10 +552,11 @@ def main():
     )
 
     # -- Video Processing --
+    # - Degraded videos -
     process_audio_and_video(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-        "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
         f"output_obama-{timestamp}.mp4",
+        "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
         color_params=obamaColor,
         enablers=allOff,
         notch_filters=[NotchFilter(100, 30, 2)],
@@ -561,76 +564,105 @@ def main():
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
     )
-    # femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
-    # process_video(
-    #     "../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #     "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-    #     f"output/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows_{timestamp}.mp4",
-    #     femaleColor,
-    #     edit_no_show,
-    # )
-    # process_video(
-    #     "../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #     "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-    #     f"output/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie_{timestamp}.mp4",
-    #     obamaColor,
-    #     edit_no_show,
-    # )
-    # femaleColor = ColorParams(
-    #     3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1
-    # )
-    # process_video(
-    #     "../DegradedVideos/archive_Robin_Singing_video.mp4",
-    #     "../SourceVideos/Robin_Singing_video.mp4",
-    #     f"output/Robin_Singing_video_{timestamp}.mp4",
-    #     femaleColor,
-    #     edit_no_show,
-    # )
-    # process_video(
-    #     "../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #     "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-    #     f"output/Jasmine_Rae_-_Heartbeat_(Official_Music_Video)_{timestamp}.mp4",
-    #     obamaColor,
-    #     edit_no_show,
-    # )
-    # process_video(
-    #     "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-    #     "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-    #     f"output/Apollo_11_Landing_-_first_steps_on_the_moon_{timestamp}.mp4",
-    #     noEffectColor,
-    #     allOff,
-    # )
-    # archive = ColorParams(3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
-    # process_video(
-    #     "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-    #     "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-    #     f"output\Breakfast-at-tiffany-s-official®-trailer-hd_{timestamp}.mp4",
-    #     archive,
-    #     allOff,
-    # )
-    # process_video(
-    #     "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-    #     "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-    #     f"output\ArchiveVideos\Edison_speech,_1920s_{timestamp}.mp4",
-    #     noEffectColor,
-    #     allOff,
-    # )
-    # archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
-    # process_video(
-    #     "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-    #     "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-    #     f"output\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962_{timestamp}.mp4",
-    #     archive,
-    #     allOff,
-    # )
-    # removeLines = Enablers(show_processed_frame=True, remove_vertical_lines=True)
-    # process_video(
-    #     "..\ArchiveVideos\The_Dream_of_Kings.mp4",
-    #     "..\ArchiveVideos\The_Dream_of_Kings.mp4",
-    #     f"output\The_Dream_of_Kings_{timestamp}.mp4",
-    #     noEffectColor,
-    #     allOff,
-    # )
+    femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
+    process_video(
+        "../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+        f"output_yellowthroat-{timestamp}.mp4",
+        "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+        color_params=femaleColor,
+        enablers=edit_no_show,
+        notch_filters=[NotchFilter(100, 1, 2)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
+        amplification_factor=1.5,
+    )
+    process_video(
+        "../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+        f"output_arts_florissants-{timestamp}.mp4",
+        "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+        color_params=obamaColor,
+        enablers=edit_no_show,
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 10000, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
+        amplification_factor=2.0,
+    )
+    process_video(
+        "../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+        f"output_heartbeat-{timestamp}.mp4",
+        "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+        color_params=obamaColor,
+        enablers=edit_no_show,
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
+        amplification_factor=1.0,
+    )
+    femaleColor = ColorParams(
+        3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1
+    )
+    process_video(
+        "../DegradedVideos/archive_Robin_Singing_video.mp4",
+        f"output_robin-{timestamp}.mp4",
+        "../SourceVideos/Robin_Singing_video.mp4",
+        color_params=femaleColor,
+        enablers=edit_no_show,
+        notch_filters=[NotchFilter(100, 1, 2)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
+        amplification_factor=1.0,
+    )
+
+    # - Archive videos -
+    process_video(
+        "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+        f"output_apollo-{timestamp}.mp4",
+        color_params=noEffectColor,
+        enablers=allOff,
+        notch_filters=[
+            NotchFilter(190, 1, 2),
+            NotchFilter(110, 1, 2),
+            NotchFilter(50, 1, 2),
+        ],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 2, 1)],
+        amplification_factor=1.0,
+    )
+    archive = ColorParams(3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
+    process_video(
+        "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+        f"output_tiffany-{timestamp}.mp4",
+        color_params=archive,
+        amplification_factor=1.0,
+        enablers=allOff,
+    )
+    process_video(
+        "..\ArchiveVideos\Edison_speech,_1920s.mp4",
+        f"output_edison-{timestamp}.mp4",
+        color_params=noEffectColor,
+        enablers=allOff,
+        notch_filters=[NotchFilter(100, 1, 1)],
+        butterworth_filters=[ButterworthFilters("lowpass", 5000, 7)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        amplification_factor=1.0,
+    )
+    archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
+    process_video(
+        "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+        f"output_kennedy-{timestamp}.mp4",
+        color_params=archive,
+        enablers=allOff,
+        notch_filters=[NotchFilter(50, 1, 1)],
+        amplification_factor=1.0,
+    )
+    removeLines = Enablers(show_processed_frame=True, remove_vertical_lines=True)
+    process_video(
+        "..\ArchiveVideos\The_Dream_of_Kings.mp4",
+        f"output_king-{timestamp}.mp4",
+        color_params=noEffectColor,
+        enablers=allOff,
+        butterworth_filters=[ButterworthFilters("lowpass", 5500, 7)],
+        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        amplification_factor=2.0,
+    )
 
     # -- Shutdown --
     end_time = time.time()
