@@ -1,11 +1,10 @@
 import time
 from dataclasses import dataclass
-from multiprocessing.dummy import Pool as ThreadPool
 
 import cv2
 import numpy as np
 import scipy
-import skimage
+from skimage import metrics
 from lorin import *
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
@@ -408,11 +407,9 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
 
 
 def evaluate_frames(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike):
-    mse = skimage.metrics.mean_squared_error(frameOrig, frame)  # naar 0!
-    psnr = skimage.metrics.peak_signal_noise_ratio(frameOrig, frame)
-    ssim = skimage.metrics.structural_similarity(
-        frameOrig, frame, channel_axis=-1
-    )  # naar 1!
+    mse = metrics.mean_squared_error(frameOrig, frame)
+    psnr = metrics.peak_signal_noise_ratio(frameOrig, frame)
+    ssim = metrics.structural_similarity(frameOrig, frame, channel_axis=-1)
     return mse, psnr, ssim
 
 
@@ -443,9 +440,7 @@ def process_video(
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
     eval_frame = 0
-    mse_list = []
-    psnr_list = []
-    ssim_list = []
+    evaluations = []
 
     for _ in tqdm(range(frame_count), desc="Progress"):
         # frame, frameOrig = threadpool.map(lambda e: e.read()[1], [cap, capOrig]) # not faster
@@ -456,20 +451,19 @@ def process_video(
             print("not cap_ok or not capOrig_ok")
 
         # -- Process frame --
-        # if enable.rek:
-        #     frame = optimaliseer_kleurrek(frame)
-        # frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
-        # frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
+        if enable.kleurrek:
+            frame = optimaliseer_kleurrek(frame)
+        frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
+        frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
         frameOut = frame
 
         # -- Output frame --
         out.write(frameOut)
-        # if enable.evaluate and eval_frame % 10:
-        #     mse, psnr, ssim = evaluate_frames(frame, frameOrig)
-        #     mse_list.append(mse)
-        #     psnr_list.append(psnr)
-        #     ssim_list.append(ssim)
-        # eval_frame += 1
+
+        # -- Evaluate every 10th frame --
+        if enable.evaluate and (eval_frame % 10 == 0):
+            evaluations.append(evaluate_frames(frame, frameOrig))
+        eval_frame += 1
 
         if enable.show_processed_frame:
             cv2.imshow("Processing Video", frameOut)
@@ -481,15 +475,12 @@ def process_video(
     if hasattr(stabiliseer_en_mediaan_frame, "frames"):
         delattr(stabiliseer_en_mediaan_frame, "frames")
 
-    if mse_list:
-        print(
-            "MSE=",
-            np.mean(mse_list),
-            " PSNR=",
-            np.mean(psnr_list),
-            " SSIM=",
-            np.mean(ssim_list),
-        )
+    if evaluations:
+        mean_mse = np.mean([e[0] for e in evaluations])
+        mean_psnr = np.mean([e[1] for e in evaluations])
+        mean_ssim = np.mean([e[2] for e in evaluations])
+        print(f"MSE={mean_mse}, PSNR={mean_psnr}, SSIM={mean_ssim}")
+
     # Release everything
     cap.release()
     capOrig.release()
@@ -532,9 +523,6 @@ def process_audio_and_video(
     print()
 
 
-threadpool = ThreadPool(4)
-
-
 def main():
     # -- Startup --
     start_time = time.time()
@@ -558,7 +546,7 @@ def main():
         f"output_obama-{timestamp}.mp4",
         "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
         color_params=obamaColor,
-        enablers=allOff,
+        enablers=edit_no_show,
         notch_filters=[NotchFilter(100, 30, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
