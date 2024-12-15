@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 from tqdm import tqdm
 from visualisations import *
+from cv2.typing import MatLike
 
 
 @dataclass
@@ -51,11 +52,11 @@ allOff = Enablers()
 
 
 def color_adjust(
-    frame: cv2.typing.MatLike,
-    frameOrig: cv2.typing.MatLike,
+    frame: MatLike,
+    frameOrig: MatLike,
     params: ColorParams,
     show_steps=False,
-) -> cv2.typing.MatLike:
+):
     frame = cv2.blur(frame, (params.FilterSize, params.FilterSize))
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
@@ -210,203 +211,196 @@ def create_gaussian_kernel(size=15, sigma=3):
     return kernel / kernel.sum()
 
 
-def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
+def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike):
+    # Convert images to grayscale for feature detection
+    gray1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
 
-    def stabiliseer_frames(img1, img2):
-        # Convert images to grayscale for feature detection
-        gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    # Use ORB for feature detection and matching
+    orb = cv2.ORB_create()
 
-        # Use ORB for feature detection and matching
-        orb = cv2.ORB_create()
+    # Detect keypoints and compute descriptors
+    kp1, des1 = orb.detectAndCompute(gray1, None)
+    kp2, des2 = orb.detectAndCompute(gray2, None)
 
-        # Detect keypoints and compute descriptors
-        kp1, des1 = orb.detectAndCompute(gray1, None)
-        kp2, des2 = orb.detectAndCompute(gray2, None)
+    # Create brute-force matcher
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-        # Create brute-force matcher
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    # Match descriptors
+    matches = bf.match(des1, des2)
 
-        # Match descriptors
-        matches = bf.match(des1, des2)
+    # Sort matches by distance
+    matches = sorted(matches, key=lambda x: x.distance)
 
-        # Sort matches by distance
-        matches = sorted(matches, key=lambda x: x.distance)
+    # Select good matches
+    good_matches = matches[:40]
 
-        # Select good matches
-        good_matches = matches[:40]
+    # Extract matched keypoints
+    src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
-        # Extract matched keypoints
-        src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(
-            -1, 1, 2
-        )
-        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(
-            -1, 1, 2
-        )
+    # Estimate translation matrix
+    translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts)
 
-        # Estimate translation matrix
-        translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts)
+    # Apply translation to the color image
+    # aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
 
-        # Apply translation to the color image
-        # aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
+    aligned_img2 = cv2.warpAffine(
+        curr_frame,
+        translation_matrix,
+        (prev_frame.shape[1], prev_frame.shape[0]),
+        borderMode=cv2.BORDER_REFLECT101,  # Herhaalt de randpixels gespiegeld
+    )
 
-        aligned_img2 = cv2.warpAffine(
-            img2,
-            translation_matrix,
-            (img1.shape[1], img1.shape[0]),
-            borderMode=cv2.BORDER_REFLECT101,  # Herhaalt de randpixels gespiegeld
-        )
+    return aligned_img2, translation_matrix
 
-        return aligned_img2, translation_matrix
 
-    def align_and_stabilize_frame(prev_frame, curr_frame):
+def align_and_stabilize_frame(prev_frame: MatLike, curr_frame: MatLike):
+    """
+    Stabiliseert een frame en aligneert de kleuren tussen frames.
+    """
+    # Split de frames in kleurkanalen
+    b1, g1, r1 = cv2.split(prev_frame)
+    b2, g2, r2 = cv2.split(curr_frame)
+
+    def calculate_alignment_error(params, target_channels, source_channels):
         """
-        Stabiliseert een frame en aligneert de kleuren tussen frames.
+        Berekent aligneringsfout tussen kleurkanalen.
         """
-        # Split de frames in kleurkanalen
-        b1, g1, r1 = cv2.split(prev_frame)
-        b2, g2, r2 = cv2.split(curr_frame)
+        b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = params
 
-        def calculate_alignment_error(params, target_channels, source_channels):
-            """
-            Berekent aligneringsfout tussen kleurkanalen.
-            """
-            b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = params
-
-            # Verschuif kleurkanalen
-            b_aligned = cv2.warpAffine(
-                source_channels[0],
-                np.float32([[1, 0, b_dx], [0, 1, b_dy]]),
-                (target_channels[0].shape[1], target_channels[0].shape[0]),
-            )
-            g_aligned = cv2.warpAffine(
-                source_channels[1],
-                np.float32([[1, 0, g_dx], [0, 1, g_dy]]),
-                (target_channels[1].shape[1], target_channels[1].shape[0]),
-            )
-            r_aligned = cv2.warpAffine(
-                source_channels[2],
-                np.float32([[1, 0, r_dx], [0, 1, r_dy]]),
-                (target_channels[2].shape[1], target_channels[2].shape[0]),
-            )
-
-            # Bereken verschil tussen gealigneerde en doel-kanalen
-            diff = (
-                np.abs(target_channels[0].astype(float) - b_aligned.astype(float))
-                + np.abs(target_channels[1].astype(float) - g_aligned.astype(float))
-                + np.abs(target_channels[2].astype(float) - r_aligned.astype(float))
-            )
-            return np.mean(diff)
-
-        # Initiële verschuivingen vinden
-        initial_shifts = [0, 0, 0, 0, 0, 0]
-        res = minimize(
-            calculate_alignment_error,
-            initial_shifts,
-            args=([b1, g1, r1], [b2, g2, r2]),
-            method="Nelder-Mead",
-        )
-        b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = res.x
-
-        # Bereken transformatiematrices
-        b_matrix = np.float32([[1, 0, b_dx], [0, 1, b_dy]])
-        g_matrix = np.float32([[1, 0, g_dx], [0, 1, g_dy]])
-        r_matrix = np.float32([[1, 0, r_dx], [0, 1, r_dy]])
-
-        # Transformeer kleurkanalen
+        # Verschuif kleurkanalen
         b_aligned = cv2.warpAffine(
-            b2,
-            b_matrix,
-            (prev_frame.shape[1], prev_frame.shape[0]),
-            borderMode=cv2.BORDER_REPLICATE,
+            source_channels[0],
+            np.float32([[1, 0, b_dx], [0, 1, b_dy]]),
+            (target_channels[0].shape[1], target_channels[0].shape[0]),
         )
         g_aligned = cv2.warpAffine(
-            g2,
-            g_matrix,
-            (prev_frame.shape[1], prev_frame.shape[0]),
-            borderMode=cv2.BORDER_REPLICATE,
+            source_channels[1],
+            np.float32([[1, 0, g_dx], [0, 1, g_dy]]),
+            (target_channels[1].shape[1], target_channels[1].shape[0]),
         )
         r_aligned = cv2.warpAffine(
-            r2,
-            r_matrix,
-            (prev_frame.shape[1], prev_frame.shape[0]),
-            borderMode=cv2.BORDER_REPLICATE,
+            source_channels[2],
+            np.float32([[1, 0, r_dx], [0, 1, r_dy]]),
+            (target_channels[2].shape[1], target_channels[2].shape[0]),
         )
 
-        return cv2.merge([b_aligned, g_aligned, r_aligned])
-
-    def verwijder_lijnen(frame):
-        if len(frame.shape) != 2:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = frame
-
-        gray = cv2.bitwise_not(gray)
-        bw = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2
+        # Bereken verschil tussen gealigneerde en doel-kanalen
+        diff = (
+            np.abs(target_channels[0].astype(float) - b_aligned.astype(float))
+            + np.abs(target_channels[1].astype(float) - g_aligned.astype(float))
+            + np.abs(target_channels[2].astype(float) - r_aligned.astype(float))
         )
+        return np.mean(diff)
 
-        vertical = np.copy(bw)
+    # Initiële verschuivingen vinden
+    initial_shifts = [0, 0, 0, 0, 0, 0]
+    res = minimize(
+        calculate_alignment_error,
+        initial_shifts,
+        args=([b1, g1, r1], [b2, g2, r2]),
+        method="Nelder-Mead",
+    )
+    b_dx, b_dy, g_dx, g_dy, r_dx, r_dy = res.x
 
-        rows = vertical.shape[0]
-        vertical_size = rows // 30
+    # Bereken transformatiematrices
+    b_matrix = np.float32([[1, 0, b_dx], [0, 1, b_dy]])
+    g_matrix = np.float32([[1, 0, g_dx], [0, 1, g_dy]])
+    r_matrix = np.float32([[1, 0, r_dx], [0, 1, r_dy]])
 
-        verticalStructure = cv2.getStructuringElement(
-            cv2.MORPH_RECT, (3, vertical_size)
-        )
+    # Transformeer kleurkanalen
+    b_aligned = cv2.warpAffine(
+        b2,
+        b_matrix,
+        (prev_frame.shape[1], prev_frame.shape[0]),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    g_aligned = cv2.warpAffine(
+        g2,
+        g_matrix,
+        (prev_frame.shape[1], prev_frame.shape[0]),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    r_aligned = cv2.warpAffine(
+        r2,
+        r_matrix,
+        (prev_frame.shape[1], prev_frame.shape[0]),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
 
-        vertical = cv2.erode(vertical, verticalStructure, iterations=5)
-        vertical = cv2.dilate(vertical, verticalStructure, iterations=5)
+    return cv2.merge([b_aligned, g_aligned, r_aligned])
 
-        frame = cv2.inpaint(frame, vertical, 15, cv2.INPAINT_TELEA)
 
-        return frame
+def verwijder_lijnen(frame: MatLike):
+    if len(frame.shape) != 2:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = frame
 
-    def mediaan_filter_op_frame_basis(frame):
-        # If this is the first frame in the sequence, initialize frames
-        if not hasattr(stabiliseer_en_mediaan_frame, "frames"):
-            stabiliseer_en_mediaan_frame.frames = [frame] * 4
+    gray = cv2.bitwise_not(gray)
+    bw = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2
+    )
 
-        # frame, translation_matrix = stabiliseer_frames(process_frame.frames[-1],frame)
-        frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 17)
+    vertical = np.copy(bw)
 
-        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-        frame = cv2.filter2D(frame, -1, kernel)
+    rows = vertical.shape[0]
+    vertical_size = rows // 30
 
-        # frame = align_color_channels(frame)
+    verticalStructure = cv2.getStructuringElement(cv2.MORPH_RECT, (3, vertical_size))
 
-        # frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
+    vertical = cv2.erode(vertical, verticalStructure, iterations=5)
+    vertical = cv2.dilate(vertical, verticalStructure, iterations=5)
 
-        if enable.remove_vertical_lines:
-            frame = verwijder_lijnen(frame)
-            b, g, r = cv2.split(frame)
-            b = scipy.ndimage.median_filter(b, (1, 5))
-            g = scipy.ndimage.median_filter(g, (1, 5))
-            r = scipy.ndimage.median_filter(r, (1, 5))
-            frame = cv2.merge((b, g, r))
-
-        if enable.stabilize:
-            frame = align_and_stabilize_frame(
-                stabiliseer_en_mediaan_frame.frames[-1], frame
-            )
-            frame, _ = stabiliseer_frames(
-                stabiliseer_en_mediaan_frame.frames[-1], frame
-            )
-
-        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[
-            1:
-        ] + [frame]
-
-        # Calculate median of last 4 frames
-        stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
-        return np.median(stacked_frames, axis=-1).astype(np.uint8)
-
-    frame = mediaan_filter_op_frame_basis(frame)
+    frame = cv2.inpaint(frame, vertical, 15, cv2.INPAINT_TELEA)
 
     return frame
 
 
-def evaluate_frames(frame: cv2.typing.MatLike, frameOrig: cv2.typing.MatLike):
+def mediaan_filter_op_frame_basis(frame: MatLike, enable: Enablers):
+    # If this is the first frame in the sequence, initialize frames
+    if not hasattr(stabiliseer_en_mediaan_frame, "frames"):
+        stabiliseer_en_mediaan_frame.frames = [frame] * 4
+
+    # frame, translation_matrix = stabiliseer_frames(process_frame.frames[-1],frame)
+    frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 17)
+
+    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    frame = cv2.filter2D(frame, -1, kernel)
+
+    # frame = align_color_channels(frame)
+
+    # frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
+
+    if enable.remove_vertical_lines:
+        frame = verwijder_lijnen(frame)
+        b, g, r = cv2.split(frame)
+        b = scipy.ndimage.median_filter(b, (1, 5))
+        g = scipy.ndimage.median_filter(g, (1, 5))
+        r = scipy.ndimage.median_filter(r, (1, 5))
+        frame = cv2.merge((b, g, r))
+
+    if enable.stabilize:
+        frame = align_and_stabilize_frame(
+            stabiliseer_en_mediaan_frame.frames[-1], frame
+        )
+        frame, _ = stabiliseer_frames(stabiliseer_en_mediaan_frame.frames[-1], frame)
+
+    stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [
+        frame
+    ]
+
+    # Calculate median of last 4 frames
+    stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
+    return np.median(stacked_frames, axis=-1).astype(np.uint8)
+
+
+def stabiliseer_en_mediaan_frame(frame: MatLike, enable: Enablers):
+    return mediaan_filter_op_frame_basis(frame, enable)
+
+
+def evaluate_frames(frame: MatLike, frameOrig: MatLike):
     mse = metrics.mean_squared_error(frameOrig, frame)
     psnr = metrics.peak_signal_noise_ratio(frameOrig, frame)
     ssim = metrics.structural_similarity(frameOrig, frame, channel_axis=-1)
@@ -455,7 +449,6 @@ def process_video(
             frame = optimaliseer_kleurrek(frame)
         frameOut = color_adjust(frame, frameOrig, color_params, enable.show_color_steps)
         frameOut = stabiliseer_en_mediaan_frame(frameOut, enable)
-        frameOut = frame
 
         # -- Output frame --
         out.write(frameOut)
