@@ -544,7 +544,7 @@ def main():
         amplification_factor=2.0,
     )
     femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
-    process_video(
+    process_audio_and_video(
         "../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
         f"output_yellowthroat-{timestamp}.mp4",
         "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
@@ -554,7 +554,7 @@ def main():
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
         amplification_factor=1.5,
     )
-    process_video(
+    process_audio_and_video(
         "../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
         f"output_arts_florissants-{timestamp}.mp4",
         "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
@@ -565,7 +565,7 @@ def main():
         reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
         amplification_factor=2.0,
     )
-    process_video(
+    process_audio_and_video(
         "../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
         f"output_heartbeat-{timestamp}.mp4",
         "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
@@ -579,7 +579,7 @@ def main():
     femaleColor = ColorParams(
         3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1
     )
-    process_video(
+    process_audio_and_video(
         "../DegradedVideos/archive_Robin_Singing_video.mp4",
         f"output_robin-{timestamp}.mp4",
         "../SourceVideos/Robin_Singing_video.mp4",
@@ -592,7 +592,7 @@ def main():
     )
 
     # - Archive videos -
-    process_video(
+    process_audio_and_video(
         "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
         f"output_apollo-{timestamp}.mp4",
         color_params=noEffectColor,
@@ -606,14 +606,14 @@ def main():
         amplification_factor=1.0,
     )
     archive = ColorParams(3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
-    process_video(
+    process_audio_and_video(
         "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
         f"output_tiffany-{timestamp}.mp4",
         color_params=archive,
         amplification_factor=1.0,
         enablers=allOff,
     )
-    process_video(
+    process_audio_and_video(
         "..\ArchiveVideos\Edison_speech,_1920s.mp4",
         f"output_edison-{timestamp}.mp4",
         color_params=noEffectColor,
@@ -624,7 +624,7 @@ def main():
         amplification_factor=1.0,
     )
     archive = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
-    process_video(
+    process_audio_and_video(
         "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
         f"output_kennedy-{timestamp}.mp4",
         color_params=archive,
@@ -633,7 +633,7 @@ def main():
         amplification_factor=1.0,
     )
     removeLines = Enablers(show_processed_frame=True, remove_vertical_lines=True)
-    process_video(
+    process_audio_and_video(
         "..\ArchiveVideos\The_Dream_of_Kings.mp4",
         f"output_king-{timestamp}.mp4",
         color_params=noEffectColor,
