@@ -1,16 +1,17 @@
+import functools
 import time
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
-import scipy
-from skimage import metrics
+from cv2.typing import MatLike
 from lorin import *
 from matplotlib import pyplot as plt
+from scipy import ndimage
 from scipy.optimize import minimize
+from skimage import metrics
 from tqdm import tqdm
 from visualisations import *
-from cv2.typing import MatLike
 
 
 @dataclass
@@ -51,12 +52,25 @@ noEffectColor = ColorParams()
 allOff = Enablers()
 
 
+@functools.lru_cache(maxsize=32)
+def create_color_mask(shape, GaussianSize):
+    rows, cols = shape
+    kernel_x = cv2.getGaussianKernel(cols, GaussianSize)
+    kernel_y = cv2.getGaussianKernel(rows, GaussianSize)
+    kernel = kernel_y * kernel_x.T
+    mask = 1 - kernel / np.linalg.norm(kernel)
+    return cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
+
+
 def color_adjust(
     frame: MatLike,
     frameOrig: MatLike,
     params: ColorParams,
     show_steps=False,
 ):
+    """
+    Execution time: 0.1s - 0.2s
+    """
     frame = cv2.blur(frame, (params.FilterSize, params.FilterSize))
     # YUV modifier - kringverzwakking
     yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
@@ -71,12 +85,8 @@ def color_adjust(
         show_histogram(v, vo, "V", "V Original")
 
     # y = scipy.ndimage.median_filter(y, (3,3))
-    rows, cols = v.shape
-    kernel_x = cv2.getGaussianKernel(cols, params.GaussianSize)
-    kernel_y = cv2.getGaussianKernel(rows, params.GaussianSize)
-    kernel = kernel_y * kernel_x.T
-    mask = 1 - kernel / np.linalg.norm(kernel)
-    mask = cv2.normalize(mask, None, 0, 1, cv2.NORM_MINMAX)
+
+    mask = create_color_mask(v.shape, params.GaussianSize)
     if show_steps:
         plt.imshow(mask)
         plt.show()
@@ -148,10 +158,10 @@ def color_adjust(
     return frame
 
 
-def radial_shift_map(shape, scale_factor, power=1.0):
+@functools.lru_cache(maxsize=32)
+def radial_shift_map(height: int, width: int, scale_factor: float, power=1.0):
     """Maak een verschuivingskaart op basis van een radiale functie."""
     # Definieer het centrum van de afbeelding (assumeer centraal)
-    height, width = shape
     y, x = np.meshgrid(np.arange(height), np.arange(width), indexing="ij")
     center_x, center_y = width // 2, height // 2
     dx = x - center_x
@@ -162,10 +172,11 @@ def radial_shift_map(shape, scale_factor, power=1.0):
     # Bereken de verschuiving
     shift_x = scale_factor * (dx / r) * (r**power)
     shift_y = scale_factor * (dy / r) * (r**power)
+
     return shift_x, shift_y
 
 
-def apply_radial_shift(channel, shift_x, shift_y):
+def apply_radial_shift(channel: MatLike, shift_x: np.ndarray, shift_y: np.ndarray):
     """Pas de verschuivingen toe op een kleurkanaal."""
     map_x, map_y = np.meshgrid(np.arange(channel.shape[1]), np.arange(channel.shape[0]))
     map_x = (map_x - shift_x).astype(np.float32)
@@ -180,7 +191,10 @@ def apply_radial_shift(channel, shift_x, shift_y):
     return corrected
 
 
-def optimaliseer_kleurrek(frame):
+def optimaliseer_kleurrek(frame: MatLike):
+    """
+    Average execution time: 0.2s
+    """
     # Splits de afbeelding in BGR-kanalen
     b, g, r = cv2.split(frame)
 
@@ -189,8 +203,9 @@ def optimaliseer_kleurrek(frame):
     scale_factor_blue = -0.003
 
     # Bereken verschuivingskaarten voor rode en blauwe kanalen
-    shift_x_r, shift_y_r = radial_shift_map(g.shape, scale_factor_red)
-    shift_x_b, shift_y_b = radial_shift_map(g.shape, scale_factor_blue)
+    height, width = g.shape
+    shift_x_r, shift_y_r = radial_shift_map(height, width, scale_factor_red)
+    shift_x_b, shift_y_b = radial_shift_map(height, width, scale_factor_blue)
 
     # Corrigeer de rode en blauwe kanalen
     aligned_r = apply_radial_shift(r, shift_x_r, shift_y_r)
@@ -202,24 +217,13 @@ def optimaliseer_kleurrek(frame):
     return aligned_image
 
 
-def create_gaussian_kernel(size=15, sigma=3):
-    """Create a 2D Gaussian kernel."""
-    x = np.linspace(-size // 2, size // 2, size)
-    y = np.linspace(-size // 2, size // 2, size)
-    x, y = np.meshgrid(x, y)
-    kernel = np.exp(-(x**2 + y**2) / (2 * sigma**2))
-    return kernel / kernel.sum()
-
-
 def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike):
     # Convert images to grayscale for feature detection
     gray1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
 
-    # Use ORB for feature detection and matching
-    orb = cv2.ORB_create()
-
     # Detect keypoints and compute descriptors
+    orb = cv2.ORB_create()
     kp1, des1 = orb.detectAndCompute(gray1, None)
     kp2, des2 = orb.detectAndCompute(gray2, None)
 
@@ -358,27 +362,25 @@ def verwijder_lijnen(frame: MatLike):
     return frame
 
 
-def mediaan_filter_op_frame_basis(frame: MatLike, enable: Enablers):
+def stabiliseer_en_mediaan_frame(frame: MatLike, enable: Enablers):
+    """
+    Average execution time: 2.6s - 2.7s
+    """
     # If this is the first frame in the sequence, initialize frames
     if not hasattr(stabiliseer_en_mediaan_frame, "frames"):
         stabiliseer_en_mediaan_frame.frames = [frame] * 4
 
-    # frame, translation_matrix = stabiliseer_frames(process_frame.frames[-1],frame)
     frame = cv2.fastNlMeansDenoisingColored(frame, None, 10, 10, 7, 17)
 
     kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
     frame = cv2.filter2D(frame, -1, kernel)
 
-    # frame = align_color_channels(frame)
-
-    # frame, translation_matrix = align_and_stabilize_frame(process_frame.frames[-1],frame)
-
     if enable.remove_vertical_lines:
         frame = verwijder_lijnen(frame)
         b, g, r = cv2.split(frame)
-        b = scipy.ndimage.median_filter(b, (1, 5))
-        g = scipy.ndimage.median_filter(g, (1, 5))
-        r = scipy.ndimage.median_filter(r, (1, 5))
+        b = ndimage.median_filter(b, (1, 5))
+        g = ndimage.median_filter(g, (1, 5))
+        r = ndimage.median_filter(r, (1, 5))
         frame = cv2.merge((b, g, r))
 
     if enable.stabilize:
@@ -394,10 +396,6 @@ def mediaan_filter_op_frame_basis(frame: MatLike, enable: Enablers):
     # Calculate median of last 4 frames
     stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
     return np.median(stacked_frames, axis=-1).astype(np.uint8)
-
-
-def stabiliseer_en_mediaan_frame(frame: MatLike, enable: Enablers):
-    return mediaan_filter_op_frame_basis(frame, enable)
 
 
 def evaluate_frames(frame: MatLike, frameOrig: MatLike):
