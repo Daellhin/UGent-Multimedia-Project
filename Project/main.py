@@ -250,7 +250,7 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
             img2,
             translation_matrix,
             (img1.shape[1], img1.shape[0]),
-            borderMode=cv2.BORDER_REFLECT101  # Herhaalt de randpixels gespiegeld
+            borderMode=cv2.BORDER_REFLECT101,  # Herhaalt de randpixels gespiegeld
         )
 
         return aligned_img2, translation_matrix
@@ -389,7 +389,9 @@ def stabiliseer_en_mediaan_frame(frame: cv2.typing.MatLike, enable: Enablers):
                 stabiliseer_en_mediaan_frame.frames[-1], frame
             )
 
-        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [frame]
+        stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[
+            1:
+        ] + [frame]
 
         # Calculate median of last 4 frames
         stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
@@ -431,7 +433,8 @@ def process_video(
     )
 
     # Create VideoWriter object
-    fourcc = cv2.VideoWriter.fourcc("m", "p", "4", "v")
+    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
     eval_frame = 0
@@ -441,10 +444,11 @@ def process_video(
 
     for _ in tqdm(range(frame_count), desc="Progress"):
         # frame, frameOrig = threadpool.map(lambda e: e.read()[1], [cap, capOrig]) # not faster
-        ok, frame = cap.read()
-        if not ok:
-            print("Frame not read")
-        # _, frameOrig = capOrig.read()
+        cap_ok, frame = cap.read()
+        capOrig_ok, frameOrig = capOrig.read()
+
+        if not cap_ok or not capOrig_ok:
+            print("not cap_ok or not capOrig_ok")
 
         # -- Process frame --
         # if enable.rek:
@@ -466,7 +470,7 @@ def process_video(
             cv2.imshow("Processing Video", frameOut)
         if enable.show_color_steps or cv2.waitKey(1) & 0xFF == ord("q"):
             break
-    cap.get
+
     print(f"Writen video to:", output_path)
     # Leeg de frame buffer voor de nieuwe video
     if hasattr(stabiliseer_en_mediaan_frame, "frames"):
@@ -492,7 +496,7 @@ def process_video(
 def process_audio_and_video(
     input_path: str,
     input_path_original: str,
-    output_path: str,
+    output_filename: str,
     color_params: ColorParams,
     enablers: Enablers,
     notch_filters: list[NotchFilter] = [],
@@ -503,13 +507,13 @@ def process_audio_and_video(
     processed_video = process_video(
         input_path,
         input_path_original,
-        output_path,
+        "output-temp/" + output_filename,
         color_params,
         enablers,
     )
     processed_audio = process_audio(
         input_path,
-        output_path,
+        "output-temp/" + output_filename,
         input_path_original,
         notch_filters,
         butterworth_filters,
@@ -517,9 +521,10 @@ def process_audio_and_video(
         amplification_factor,
         enablers.debug_audio,
     )
-    processed_video = VideoFileClip(output_path)
-    processed_audio = AudioFileClip(output_path + ".wav")
-    combine_audio_with_video(processed_audio, processed_video, output_path+".mp4")
+    combine_audio_with_video(
+        processed_audio, processed_video, "output-final/" + output_filename
+    )
+    print()
 
 
 threadpool = ThreadPool(4)
@@ -541,14 +546,14 @@ def main():
         kleurrek=True, show_processed_frame=False, stabilize=True, evaluate=True
     )
     edit_with_show = Enablers(
-        rek=True, show_processed_frame=True, stabilize=True, evaluate=True
+        kleurrek=True, show_processed_frame=True, stabilize=True, evaluate=True
     )
 
     # -- Video Processing --
     process_audio_and_video(
         "DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
         "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
-        f"output/output_obama-{timestamp}.mp4",
+        f"output_obama-{timestamp}.mp4",
         color_params=obamaColor,
         enablers=allOff,
         notch_filters=[NotchFilter(100, 30, 2)],

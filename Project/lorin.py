@@ -313,13 +313,14 @@ def process_audio(
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))
 
+    # Compare audio
     if input_path_original:
+        print("-- Compairing audio with original")
         audio_original = AudioFileClip(input_path_original)
         fs_original = audio_original.fps
         print(
             f"Loading original audio frames (fs={fs_original}) (s={audio_original.duration})"
         )
-
         audio_samples_original: list[list[float]] = list(audio_original.to_soundarray())
         compare_audio(audio_samples_original, audio_samples, processed_audio)
 
@@ -327,12 +328,13 @@ def process_audio(
 
 
 def combine_audio_with_video(
-    audio: AudioFileClip, video: VideoFileClip, output_path: str
+    audio: AudioFileClip, video: VideoFileClip, output_path: str, show_progress=True
 ):
     print("-- Combining audio and video: ", audio.filename, video.filename)
     # -- Combine video and audio --
     result: VideoFileClip = video.with_audio(audio)
-    result.write_videofile(output_path)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    result.write_videofile(output_path, logger=("bar" if show_progress else None))
 
 
 def main():
