@@ -308,7 +308,7 @@ def process_audio(
     )
 
     # Audio output
-    audio_path = f"{output_path}.wav"
+    audio_path = f"{output_path}"
     print(f"Writing audio to:", audio_path)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wavfile.write(audio_path, fs, np.array(processed_audio, dtype=np.float32))

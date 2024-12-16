@@ -1,10 +1,12 @@
 import functools
 import time
 from dataclasses import dataclass
+from gc import enable
 
 import cv2
 import numpy as np
 from cv2.typing import MatLike
+
 from lorin import *
 from matplotlib import pyplot as plt
 from scipy import ndimage
@@ -43,6 +45,9 @@ class Enablers:
     show_processed_frame: bool = False
     evaluate: bool = False
     stabilize: bool = False
+    stabilize_colors: bool = False
+    stabilize_only_x: bool = False
+    stabilize_limit: bool = False
     debug_audio: bool = False
     remove_vertical_lines: bool = False
     bijsnijden: bool = False
@@ -218,7 +223,7 @@ def optimaliseer_kleurrek(frame: MatLike):
     return aligned_image
 
 
-def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike):
+def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike, limit: bool, only_x: bool):
     # Convert images to grayscale for feature detection
     gray1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
@@ -245,7 +250,33 @@ def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike):
     dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
     # Estimate translation matrix
-    translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts)
+    try:
+        translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts, ransacReprojThreshold=4)
+    except:
+        print("Er liep iets mis")
+        return curr_frame, None
+
+    #############
+    if limit:
+        # Creëer een nieuwe rotatiematrix met vaste hoek zonder draaiing
+        translation_matrix[:2, :2] = np.array([
+            [1, 0],
+            [0, 1]
+        ])
+
+        # Beperk de verplaatsing in x en y richting
+        if translation_matrix[0, 2] > 10:
+            translation_matrix[0, 2] = 10
+        elif translation_matrix[0, 2] < -10:
+            translation_matrix[0, 2] = -10
+
+    if only_x:
+        # Forceer y-translatie naar 0, behoud x-translatie
+        translation_matrix[1, 2] = 0
+
+    #############
+
+
 
     # Apply translation to the color image
     # aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
@@ -254,7 +285,7 @@ def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike):
         curr_frame,
         translation_matrix,
         (prev_frame.shape[1], prev_frame.shape[0]),
-        borderMode=cv2.BORDER_REFLECT101,  # Herhaalt de randpixels gespiegeld
+        borderMode=cv2.BORDER_REPLICATE,  # Herhaalt de randpixels gespiegeld
     )
 
     return aligned_img2, translation_matrix
@@ -384,15 +415,13 @@ def stabiliseer_en_mediaan_frame(frame: MatLike, enable: Enablers):
         r = ndimage.median_filter(r, (1, 5))
         frame = cv2.merge((b, g, r))
 
-    if enable.stabilize:
-        frame = align_and_stabilize_frame(
-            stabiliseer_en_mediaan_frame.frames[-1], frame
-        )
-        frame, _ = stabiliseer_frames(stabiliseer_en_mediaan_frame.frames[-1], frame)
+    if enable.stabilize_colors:
+        frame = align_and_stabilize_frame(stabiliseer_en_mediaan_frame.frames[-1], frame)
 
-    stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [
-        frame
-    ]
+    if enable.stabilize:
+        frame, _ = stabiliseer_frames(stabiliseer_en_mediaan_frame.frames[-1], frame, enable.stabilize_limit, enable.stabilize_only_x)
+
+    stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [frame]
 
     # Calculate median of last 4 frames
     stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
@@ -433,9 +462,12 @@ def process_video(
     )
 
     # Create VideoWriter object
-    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+    fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+
+    if enable.bijsnijden:
+        out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width - 75, frame_height - 60))
 
     eval_frame = 0
     evaluations = []
@@ -504,13 +536,13 @@ def process_audio_and_video(
     processed_video = process_video(
         input_path,
         input_path_original if input_path_original else input_path,
-        "output-temp/" + output_filename,
+        "output-temp/" + output_filename + ".mp4",
         color_params,
         enablers,
     )
     processed_audio = process_audio(
         input_path,
-        "output-temp/" + output_filename,
+        "output-temp/" + output_filename + ".wav",
         input_path_original,
         notch_filters,
         butterworth_filters,
@@ -519,7 +551,7 @@ def process_audio_and_video(
         enablers.debug_audio,
     )
     combine_audio_with_video(
-        processed_audio, processed_video, "output-final/" + output_filename
+        processed_audio, processed_video, "output-final/" + output_filename + ".mp4"
     )
     print()
 
@@ -542,7 +574,10 @@ def main():
         kleurrek=True, show_processed_frame=False, stabilize=True, evaluate=True
     )
     edit_no_show_obama = Enablers(
-        kleurrek=True, show_processed_frame=False, stabilize=True, evaluate=True, bijsnijden=True
+        kleurrek=True, show_processed_frame=True, stabilize=True, evaluate=True, bijsnijden=True
+    )
+    edit_no_show_henry = Enablers(
+        kleurrek=True, show_processed_frame=True, stabilize=True, stabilize_only_x=True, stabilize_limit=True, evaluate=True, bijsnijden=True
     )
     edit_with_show = Enablers(
         kleurrek=True, show_processed_frame=True, stabilize=True, evaluate=True
@@ -555,7 +590,7 @@ def main():
     # - Degraded videos -
     process_audio_and_video(
         "../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4",
-        f"output-final/output/output_obama-{timestamp}.mp4",
+        f"output_obama-{timestamp}",
         "../SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
         color_params=obamaColor,
         enablers=edit_no_show_obama,
@@ -564,10 +599,11 @@ def main():
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
     )
-
+    """
+    
     process_audio_and_video(
         "../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-        f"output-final/output/output_yellowthroat-{timestamp}.mp4",
+        f"output_yellowthroat-{timestamp}",
         "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
         color_params=femaleColor,
         enablers=edit_no_show,
@@ -575,19 +611,19 @@ def main():
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
         amplification_factor=1.5,
     )
-
+    
     process_audio_and_video(
         "../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-        f"output-final/output/output_arts_florissants-{timestamp}.mp4",
+        f"output_arts_florissants-{timestamp}",
         "../SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
         color_params=obamaColor,
-        enablers=edit_no_show,
+        enablers=edit_no_show_henry,
         notch_filters=[NotchFilter(100, 1, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 10000, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
         amplification_factor=2.0,
     )
-
+    
     process_audio_and_video(
         "../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
         f"output-final/output/output_heartbeat-{timestamp}.mp4",
@@ -663,7 +699,7 @@ def main():
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 7)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
-    )
+    )"""
 
     # -- Shutdown --
     end_time = time.time()
