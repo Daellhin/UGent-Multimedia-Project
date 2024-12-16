@@ -251,7 +251,7 @@ def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike, limit: bool, on
 
     # Estimate translation matrix
     try:
-        translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts, ransacReprojThreshold=4)
+        translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts, ransacReprojThreshold=10)
     except:
         print("Er liep iets mis")
         return curr_frame, None
@@ -570,17 +570,28 @@ def main():
     archiveBreakfast = ColorParams(3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
 
     # - Other parameters -
+    # Algemeen
     edit_no_show = Enablers(
-        kleurrek=True, show_processed_frame=False, stabilize=True, evaluate=True
-    )
-    edit_no_show_obama = Enablers(
-        kleurrek=True, show_processed_frame=True, stabilize=True, evaluate=True, bijsnijden=True
-    )
-    edit_no_show_henry = Enablers(
-        kleurrek=True, show_processed_frame=True, stabilize=True, stabilize_only_x=True, stabilize_limit=True, evaluate=True, bijsnijden=True
+        kleurrek=True,stabilize=True, evaluate=True
     )
     edit_with_show = Enablers(
         kleurrek=True, show_processed_frame=True, stabilize=True, evaluate=True
+    )
+    # Video specifiek
+    edit_no_show_obama = Enablers(
+        kleurrek=True, stabilize=True, stabilize_limit=True, evaluate=True, bijsnijden=True
+    )
+    edit_no_show_female = Enablers(
+        kleurrek=True, evaluate=True
+    )
+    edit_no_show_henry = Enablers(
+        kleurrek=True, stabilize=True, stabilize_only_x=True, stabilize_limit=True, evaluate=True, bijsnijden=True
+    )
+    edit_no_show_jasmine = Enablers(
+        kleurrek=True, evaluate=True
+    )
+    edit_no_show_robin = Enablers(
+        kleurrek=True, evaluate=True
     )
     removeLines = Enablers(
         remove_vertical_lines=True
@@ -599,19 +610,18 @@ def main():
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
     )
-    """
     
     process_audio_and_video(
         "../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
         f"output_yellowthroat-{timestamp}",
         "../SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
         color_params=femaleColor,
-        enablers=edit_no_show,
+        enablers=edit_no_show_female,
         notch_filters=[NotchFilter(100, 1, 2)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
         amplification_factor=1.5,
     )
-    
+
     process_audio_and_video(
         "../DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
         f"output_arts_florissants-{timestamp}",
@@ -626,10 +636,10 @@ def main():
     
     process_audio_and_video(
         "../DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-        f"output-final/output/output_heartbeat-{timestamp}.mp4",
+        f"output_heartbeat-{timestamp}",
         "../SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
         color_params=obamaColor,
-        enablers=edit_no_show,
+        enablers=edit_no_show_jasmine,
         notch_filters=[NotchFilter(100, 1, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
@@ -638,10 +648,10 @@ def main():
 
     process_audio_and_video(
         "../DegradedVideos/archive_Robin_Singing_video.mp4",
-        f"output-final/output/output_robin-{timestamp}.mp4",
+        f"output_robin-{timestamp}",
         "../SourceVideos/Robin_Singing_video.mp4",
         color_params=robinColor,
-        enablers=edit_no_show,
+        enablers=edit_no_show_robin,
         notch_filters=[NotchFilter(100, 1, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048 * 4, 1)],
@@ -651,7 +661,7 @@ def main():
     # - Archive videos -
     process_audio_and_video(
         "../ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-        f"output-final/output/output_apollo-{timestamp}.mp4",
+        f"output_apollo-{timestamp}",
         color_params=noEffectColor,
         enablers=allOff,
         notch_filters=[
@@ -665,7 +675,7 @@ def main():
 
     process_audio_and_video(
         "..\ArchiveVideos\Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-        f"output-final/output/output_tiffany-{timestamp}.mp4",
+        f"output_tiffany-{timestamp}",
         color_params=archiveBreakfast,
         amplification_factor=1.0,
         enablers=allOff,
@@ -673,7 +683,7 @@ def main():
 
     process_audio_and_video(
         "..\ArchiveVideos\Edison_speech,_1920s.mp4",
-        f"output-final/output/output_edison-{timestamp}.mp4",
+        f"output_edison-{timestamp}",
         color_params=noEffectColor,
         enablers=allOff,
         notch_filters=[NotchFilter(100, 1, 1)],
@@ -684,7 +694,7 @@ def main():
 
     process_audio_and_video(
         "..\ArchiveVideos\President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-        f"output-final/output/output_kennedy-{timestamp}.mp4",
+        f"output_kennedy-{timestamp}",
         color_params=archivePresident,
         enablers=allOff,
         notch_filters=[NotchFilter(50, 1, 1)],
@@ -693,13 +703,13 @@ def main():
 
     process_audio_and_video(
         "..\ArchiveVideos\The_Dream_of_Kings.mp4",
-        f"output-final/output/output_king-{timestamp}.mp4",
+        f"output_king-{timestamp}",
         color_params=noEffectColor,
         enablers=removeLines,
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 7)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
-    )"""
+    )
 
     # -- Shutdown --
     end_time = time.time()
