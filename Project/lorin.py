@@ -98,32 +98,39 @@ def mono_spectral_noise_filter(
     fs: int,
     noise_estimation_time=0.01,
     kernel_size=(1, 15),
+    n_fft=1024,
 ):
     """
     Estimates the noise power in each frequency using the first samples of the audio.
-    If noise power is greater than the magnitude of the frequency, the frequency is set to 0.
+    If noise power is greater than the magnitude of the frequency, the amplitude of the frequency is set to 0.
+
+    Own implementation of spectral gating, less succesful than noisereduce
     """
-    _, _, stft = signal.stft(audio, fs)
-    magnitude = abs(stft)
-    phase = np.exp(1.0j * np.angle(stft))
+    stft = signal.stft(audio, fs, nfft=n_fft)[2]  # list[list[complex]]
+    magnitudes = np.abs(stft)  # list[list[float]]
+    phases = np.exp(1.0j * np.angle(stft))
 
     noise_estimation_samples = int(fs * noise_estimation_time)
-    noise_power = np.mean(magnitude[:, :noise_estimation_samples], axis=1)
-    noise_power = noise_power * 1.1
-    binary_mask = (magnitude > noise_power[:, None]).astype(float)
+    noise_powers = (
+        np.mean(magnitudes[:, :noise_estimation_samples], axis=1) * 1.1
+    )  # list[float]
+    binary_mask = (magnitudes > noise_powers[:, None]).astype(
+        float
+    )  # list[list[float]]
     binary_mask = signal.medfilt(binary_mask, kernel_size)
-    frequencies_filtered = magnitude * binary_mask
+    frequencies_filtered = magnitudes * binary_mask
 
-    stft_filtered = frequencies_filtered * phase
-    _, audio_filtered = signal.istft(stft_filtered, fs)
+    stft_filtered = frequencies_filtered * phases
+    _, audio_filtered = signal.istft(stft_filtered, fs, nfft=n_fft)
     return audio_filtered
 
 
-def stereo_spectral_noise_estimation_filter(
+def stereo_spectral_gating_filter(
     stereo_audio: list[list[float]],
     fs: int,
     noise_estimation_time=0.01,
     kernel_size=(1, 15),
+    n_fft=1024,
 ):
     """
     Reduce noise using spectral gating, own implementation. Less succesful than noisereduce
@@ -131,10 +138,10 @@ def stereo_spectral_noise_estimation_filter(
     left_channel, right_channel = stereo_to_mono(stereo_audio)
 
     filtered_left = mono_spectral_noise_filter(
-        left_channel, fs, noise_estimation_time, kernel_size
+        left_channel, fs, noise_estimation_time, kernel_size, n_fft
     )
     filtered_right = mono_spectral_noise_filter(
-        right_channel, fs, noise_estimation_time, kernel_size
+        right_channel, fs, noise_estimation_time, kernel_size, n_fft
     )
 
     return mono_to_stereo(filtered_left, filtered_right)
@@ -221,9 +228,10 @@ def apply_audio_filters(
         filtered_audio_1,
     )
     filtered_audio_3 = reduce(
-        lambda x, f: stereo_reduce_noise_filter(
-            x, fs, f.stationary, f.n_fft, True, f.strength
-        ),
+        # lambda x, f: stereo_reduce_noise_filter(
+        #     x, fs, f.stationary, f.n_fft, True, f.strength
+        # ),
+        lambda x, f: stereo_spectral_gating_filter(x, fs, n_fft=f.n_fft),
         reduce_noise_filters,
         filtered_audio_2,
     )
@@ -347,88 +355,92 @@ def main():
         "SourceVideos/2017-01-07_President_Obama's_Weekly_Address.mp4",
         notch_filters=[NotchFilter(100, 30, 2)],
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
+        reduce_noise_filters=[ReduceNoiseFilters(True, 2048, 1)],
         amplification_factor=2.0,
         debug=debug,
     )
-    process_audio(
-        "DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-        "output/output_yellowthroat.mp4",
-        "SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
-        notch_filters=[NotchFilter(100, 1, 2)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*4, 1)],
-        amplification_factor=1.5,
-        debug=debug,
-    )
-    process_audio(
-        "DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-        "output/output_arts_florissants.mp4",
-        "SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
-        notch_filters=[NotchFilter(100, 1, 2)],
-        butterworth_filters=[ButterworthFilters("lowpass", 10000, 5)],
-        reduce_noise_filters=[ReduceNoiseFilters(True, 2048*4, 1)],
-        amplification_factor=2.0,
-        debug=debug,
-    )
-    process_audio(
-        "DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-        "output/output_heartbeat.mp4",
-        "SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
-        notch_filters=[NotchFilter(100, 1, 2)],
-        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*4, 1)],
-        amplification_factor=1.0,
-        debug=debug,
-    )
-    process_audio(
-        "DegradedVideos/archive_Robin_Singing_video.mp4",
-        "output/output_robin.mp4",
-        "SourceVideos/Robin_Singing_video.mp4",
-        notch_filters=[NotchFilter(100, 1, 2)],
-        butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*4, 1)],
-        amplification_factor=1.0,
-        debug=debug,
-    )
+    # process_audio(
+    #     "DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #     "output/output_yellowthroat.mp4",
+    #     "SourceVideos/20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4",
+    #     notch_filters=[NotchFilter(100, 1, 2)],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
+    #     amplification_factor=1.5,
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "DegradedVideos/archive_Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #     "output/output_arts_florissants.mp4",
+    #     "SourceVideos/Henry_Purcell__Music_For_a_While__-_Les_Arts_Florissants,_William_Christie.mp4",
+    #     notch_filters=[NotchFilter(100, 1, 2)],
+    #     butterworth_filters=[ButterworthFilters("lowpass", 10000, 5)],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
+    #     amplification_factor=2.0,
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "DegradedVideos/archive_Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #     "output/output_heartbeat.mp4",
+    #     "SourceVideos/Jasmine_Rae_-_Heartbeat_(Official_Music_Video).mp4",
+    #     notch_filters=[NotchFilter(100, 1, 2)],
+    #     butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
+    #     amplification_factor=1.0,
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "DegradedVideos/archive_Robin_Singing_video.mp4",
+    #     "output/output_robin.mp4",
+    #     "SourceVideos/Robin_Singing_video.mp4",
+    #     notch_filters=[NotchFilter(100, 1, 2)],
+    #     butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 4, 1)],
+    #     amplification_factor=1.0,
+    #     debug=debug,
+    # )
 
-    # -- Archive videos --
-    process_audio(
-        "ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
-        "output/output_apollo.mp4",
-        notch_filters=[NotchFilter(190, 1, 2), NotchFilter(110, 1, 2), NotchFilter(50, 1, 2)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048*2, 1)],
-        amplification_factor=1.0,
-        debug=debug,
-    )
-    process_audio(
-        "ArchiveVideos/Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
-        "output/output_tiffany.mp4",
-        debug=debug,
-    )
-    process_audio(
-        "ArchiveVideos/Edison_speech,_1920s.mp4",
-        "output/output_edison.mp4",
-        notch_filters=[NotchFilter(100, 1, 1)],
-        butterworth_filters=[ButterworthFilters("lowpass", 5000, 7)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
-        amplification_factor=1.0,
-        debug=debug,
-    )
-    process_audio(
-        "ArchiveVideos/President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
-        "output/output_kennedy.mp4",
-        notch_filters=[NotchFilter(50, 1, 1)],
-        amplification_factor=1.0,
-        debug=debug,
-    )
-    process_audio(
-        "ArchiveVideos/The_Dream_of_Kings.mp4",
-        "output/output_king.mp4",
-        butterworth_filters=[ButterworthFilters("lowpass", 5500, 7)],
-        reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
-        amplification_factor=2.0,
-        debug=debug,
-    )
+    # # -- Archive videos --
+    # process_audio(
+    #     "ArchiveVideos/Apollo_11_Landing_-_first_steps_on_the_moon.mp4",
+    #     "output/output_apollo.mp4",
+    #     notch_filters=[
+    #         NotchFilter(190, 1, 2),
+    #         NotchFilter(110, 1, 2),
+    #         NotchFilter(50, 1, 2),
+    #     ],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048 * 2, 1)],
+    #     amplification_factor=1.0,
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "ArchiveVideos/Breakfast-at-tiffany-s-official®-trailer-hd.mp4",
+    #     "output/output_tiffany.mp4",
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "ArchiveVideos/Edison_speech,_1920s.mp4",
+    #     "output/output_edison.mp4",
+    #     notch_filters=[NotchFilter(100, 1, 1)],
+    #     butterworth_filters=[ButterworthFilters("lowpass", 5000, 7)],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048, 1)],
+    #     amplification_factor=1.0,
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "ArchiveVideos/President_Kennedy_speech_on_the_space_effort_at_Rice_University,_September_12,_1962.mp4",
+    #     "output/output_kennedy.mp4",
+    #     notch_filters=[NotchFilter(50, 1, 1)],
+    #     amplification_factor=1.0,
+    #     debug=debug,
+    # )
+    # process_audio(
+    #     "ArchiveVideos/The_Dream_of_Kings.mp4",
+    #     "output/output_king.mp4",
+    #     butterworth_filters=[ButterworthFilters("lowpass", 5500, 7)],
+    #     reduce_noise_filters=[ReduceNoiseFilters(True, 2048, 1)],
+    #     amplification_factor=2.0,
+    #     debug=debug,
+    # )
 
     end_time = time.time()
     execution_time = end_time - start_time

@@ -223,7 +223,9 @@ def optimaliseer_kleurrek(frame: MatLike):
     return aligned_image
 
 
-def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike, limit: bool, only_x: bool):
+def stabiliseer_frames(
+    prev_frame: MatLike, curr_frame: MatLike, limit: bool, only_x: bool
+):
     # Convert images to grayscale for feature detection
     gray1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
@@ -251,7 +253,9 @@ def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike, limit: bool, on
 
     # Estimate translation matrix
     try:
-        translation_matrix, _ = cv2.estimateAffinePartial2D(dst_pts, src_pts, ransacReprojThreshold=10)
+        translation_matrix, _ = cv2.estimateAffinePartial2D(
+            dst_pts, src_pts, ransacReprojThreshold=10
+        )
     except:
         print("Er liep iets mis")
         return curr_frame, None
@@ -259,10 +263,7 @@ def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike, limit: bool, on
     #############
     if limit:
         # Creëer een nieuwe rotatiematrix met vaste hoek zonder draaiing
-        translation_matrix[:2, :2] = np.array([
-            [1, 0],
-            [0, 1]
-        ])
+        translation_matrix[:2, :2] = np.array([[1, 0], [0, 1]])
 
         # Beperk de verplaatsing in x en y richting
         if translation_matrix[0, 2] > 10:
@@ -275,8 +276,6 @@ def stabiliseer_frames(prev_frame: MatLike, curr_frame: MatLike, limit: bool, on
         translation_matrix[1, 2] = 0
 
     #############
-
-
 
     # Apply translation to the color image
     # aligned_img2 = cv2.warpAffine(img2, translation_matrix, (img1.shape[1], img1.shape[0]))
@@ -416,12 +415,21 @@ def stabiliseer_en_mediaan_frame(frame: MatLike, enable: Enablers):
         frame = cv2.merge((b, g, r))
 
     if enable.stabilize_colors:
-        frame = align_and_stabilize_frame(stabiliseer_en_mediaan_frame.frames[-1], frame)
+        frame = align_and_stabilize_frame(
+            stabiliseer_en_mediaan_frame.frames[-1], frame
+        )
 
     if enable.stabilize:
-        frame, _ = stabiliseer_frames(stabiliseer_en_mediaan_frame.frames[-1], frame, enable.stabilize_limit, enable.stabilize_only_x)
+        frame, _ = stabiliseer_frames(
+            stabiliseer_en_mediaan_frame.frames[-1],
+            frame,
+            enable.stabilize_limit,
+            enable.stabilize_only_x,
+        )
 
-    stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [frame]
+    stabiliseer_en_mediaan_frame.frames = stabiliseer_en_mediaan_frame.frames[1:] + [
+        frame
+    ]
 
     # Calculate median of last 4 frames
     stacked_frames = np.stack(stabiliseer_en_mediaan_frame.frames, axis=-1)
@@ -429,7 +437,7 @@ def stabiliseer_en_mediaan_frame(frame: MatLike, enable: Enablers):
 
 
 def crop_video_frame(frame, top=50, bottom=10, left=20, right=55):
-    cropped_frame = frame[top:frame.shape[0]-bottom, left:frame.shape[1]-right]
+    cropped_frame = frame[top : frame.shape[0] - bottom, left : frame.shape[1] - right]
     return cropped_frame
 
 
@@ -462,12 +470,14 @@ def process_video(
     )
 
     # Create VideoWriter object
-    fourcc = cv2.VideoWriter.fourcc('m', 'p', '4', 'v')
+    fourcc = cv2.VideoWriter.fourcc("m", "p", "4", "v")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
 
     if enable.bijsnijden:
-        out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width - 75, frame_height - 60))
+        out = cv2.VideoWriter(
+            output_path, fourcc, fps, (frame_width - 75, frame_height - 60)
+        )
 
     eval_frame = 0
     evaluations = []
@@ -563,39 +573,42 @@ def main():
 
     # -- Configuration --
     # - Color parameters -
-    obamaColor = ColorParams(3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1)
+    obamaColor = ColorParams(
+        3, 1080, 0.005, 0.005, 1 / 3, 2.5, 2.1, 0, 190, 140, 20, 1, 0, 1
+    )
     femaleColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 40, 1, 0, 1)
     robinColor = ColorParams(3, 1080, 0, 0, 1 / 2, 2.5, 2.1, 30, 190, 140, 50, 1, 10, 1)
     archivePresident = ColorParams(3, 1080, 0, 0, 1 / 2, 1, 1, 30, 0, 0, -15, 1, -5, 1)
-    archiveBreakfast = ColorParams(3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1)
+    archiveBreakfast = ColorParams(
+        3, 1080 // 2, 0, 0, 2 / 3, 1, 1, 5, 0, 0, -20, 1, 5, 1
+    )
 
     # - Other parameters -
     # Algemeen
-    edit_no_show = Enablers(
-        kleurrek=True,stabilize=True, evaluate=True
-    )
+    edit_no_show = Enablers(kleurrek=True, stabilize=True, evaluate=True)
     edit_with_show = Enablers(
         kleurrek=True, show_processed_frame=True, stabilize=True, evaluate=True
     )
     # Video specifiek
     edit_no_show_obama = Enablers(
-        kleurrek=True, stabilize=True, stabilize_limit=True, evaluate=True, bijsnijden=True
+        kleurrek=True,
+        stabilize=True,
+        stabilize_limit=True,
+        evaluate=True,
+        bijsnijden=True,
     )
-    edit_no_show_female = Enablers(
-        kleurrek=True, evaluate=True
-    )
+    edit_no_show_female = Enablers(kleurrek=True, evaluate=True)
     edit_no_show_henry = Enablers(
-        kleurrek=True, stabilize=True, stabilize_only_x=True, stabilize_limit=True, evaluate=True, bijsnijden=True
+        kleurrek=True,
+        stabilize=True,
+        stabilize_only_x=True,
+        stabilize_limit=True,
+        evaluate=True,
+        bijsnijden=True,
     )
-    edit_no_show_jasmine = Enablers(
-        kleurrek=True, evaluate=True
-    )
-    edit_no_show_robin = Enablers(
-        kleurrek=True, evaluate=True
-    )
-    removeLines = Enablers(
-        remove_vertical_lines=True
-    )
+    edit_no_show_jasmine = Enablers(kleurrek=True, evaluate=True)
+    edit_no_show_robin = Enablers(kleurrek=True, evaluate=True)
+    removeLines = Enablers(remove_vertical_lines=True)
 
     # -- Video Processing --
     # - Degraded videos -
