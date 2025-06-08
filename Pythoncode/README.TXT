@@ -6,7 +6,6 @@ Versie controle:
     Numpy:          2.1.1
     Scipy:          1.14.1
     Matplotlib:     3.9.2
-    Audioplayer:    0.6
 	Skimage:        0.24.0
 	Tqdm:           4.67.0
 	Moviepy:	    2.0.0

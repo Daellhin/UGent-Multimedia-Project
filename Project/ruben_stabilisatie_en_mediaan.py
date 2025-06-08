@@ -7,13 +7,11 @@ from scipy.optimize import minimize
 import cv2
 import numpy as np
 import scipy
-from PIL.ImageChops import multiply
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy
 from visualisations import *
 from utils import printProgressBar
-from numba import jit, cuda
 
 def create_gaussian_kernel(size=15, sigma=3):
     """Create a 2D Gaussian kernel."""

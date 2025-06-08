@@ -12,7 +12,6 @@ from scipy.io import wavfile
 from functools import reduce
 from operator import concat
 import moviepy
-from vidstab import VidStab
 from moviepy import VideoFileClip
 
 def avg_filter(frame):
@@ -260,10 +259,6 @@ def main():
     video_clip.write_videofile(input_mov_file, codec='libx264')"""
 
     #stabilize_background("output/input_mov_video.mov", "output/stabilized_video.mp4")
-
-    #stabilizer = VidStab()
-    #stabilizer.stabilize(input_path="output/input_mov_video.mov", output_path="output/input_avi_video.avi")
-
 
     #process_video("../DegradedVideos/archive_20240709_female_common_yellowthroat_with_caterpillar_canoe_meadows.mp4", "output/output.mp4")
     #process_video("../DegradedVideos/archive_2017-01-07_President_Obama's_Weekly_Address.mp4", "output/tussenstap.mov")

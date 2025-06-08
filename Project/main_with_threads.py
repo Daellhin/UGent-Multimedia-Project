@@ -7,7 +7,6 @@ import time
 import cv2
 import numpy as np
 import scipy
-from PIL.ImageChops import multiply
 from matplotlib import pyplot as plt
 from scipy.io import wavfile
 import moviepy

@@ -3,7 +3,6 @@ import random
 import time
 from typing import Sequence
 import skimage
-from imageio.core import image_as_uint
 from skimage import *
 import cv2
 import numpy as np
