@@ -1,9 +1,10 @@
 /ArchiveVideos
 /DegradedVideos
 /SourceVideos
+Project/output-final
+Project/output-temp
 /Project/output
-/output
-/output_testing
-/output-final
-/output-temp
+src/output
+src/output-final
+src/output-temp
 __pycache__
