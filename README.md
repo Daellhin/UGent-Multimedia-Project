@@ -1,5 +1,20 @@
 # Project multimedia
 
+## Showcase
+<table>
+  <tr>
+    <th>Input (Degraded)</th>
+    <th>Output (Enhanced)</th>
+  </tr>
+  <tr>
+    <td><img src="img/input_obama.mp4" alt="Degraded video" width="400"/></td>
+    <td><img src="img/output_obama.mp4" alt="Enhanced video" width="400"/></td>
+  </tr>
+</table>
+
+*Example: Video enhancement result showing quality improvement*
+
+
 ## Dependencies installeren
 `Standaard dependencies:` getest onder python 3.13
 ```bash
