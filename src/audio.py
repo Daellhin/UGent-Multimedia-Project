@@ -203,6 +203,7 @@ def apply_audio_filters(
     amplification_factor=1.0,
     debug=False,
 ) -> list[list[float]]:
+    # Apply audio filters in sequence using reduce
     filtered_audio_1 = reduce(
         lambda x, f: sterio_notch_filter(x, fs, f.frequency, f.Q, f.order, debug),
         notch_filters,

@@ -428,7 +428,7 @@ def evaluate_frames(frame: MatLike, frameOrig: MatLike):
     return mse, psnr, ssim
 
 
-def process_video(input_path: str, original: str, output_path: str, color_params: ColorParams, enable: Enablers):
+def process_video(input_path: str, original: str, output_path: str, color_params: ColorParams, enable: Enablers, frame_limit: int = None):
     # Open the video files
     check_if_files_exist([input_path, original])
     cap = cv2.VideoCapture(input_path)
@@ -438,7 +438,7 @@ def process_video(input_path: str, original: str, output_path: str, color_params
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if not frame_limit else min(frame_limit, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
     print(
         f"-- Processing video: '{input_path}' with {frame_count} frames of {frame_width}x{frame_height} at {fps} fps"
     )
@@ -514,6 +514,7 @@ def process_audio_and_video(
     butterworth_filters: list[ButterworthFilters] = [],
     reduce_noise_filters: list = [],
     amplification_factor=1.0,
+    frame_limit: int = None,
 ):
     processed_video = process_video(
         input_path,
@@ -521,6 +522,7 @@ def process_audio_and_video(
         "output-temp/" + output_filename + ".mp4",
         color_params,
         enablers,
+        frame_limit
     )
     processed_audio = process_audio(
         input_path,
@@ -591,6 +593,7 @@ def main():
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
+        frame_limit=10
     )
 
     process_audio_and_video(
