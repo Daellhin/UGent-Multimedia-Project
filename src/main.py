@@ -593,7 +593,7 @@ def main():
         butterworth_filters=[ButterworthFilters("lowpass", 5500, 5)],
         reduce_noise_filters=[ReduceNoiseFilters(False, 2048, 1)],
         amplification_factor=2.0,
-        frame_limit=10
+        frame_limit=None
     )
 
     process_audio_and_video(
